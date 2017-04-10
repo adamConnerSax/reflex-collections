@@ -10,7 +10,7 @@
 {-# LANGUAGE UndecidableInstances  #-}
 module Reflex.Dom.Contrib.ListHoldFunctions.Core
   (
-  , Sequenceable(..)
+    Sequenceable(..)
   , ToPatchType(..)
   , listHoldWithKeyGeneral
   , HasFan(..)
@@ -21,21 +21,22 @@ module Reflex.Dom.Contrib.ListHoldFunctions.Core
 
 import qualified Reflex                 as R
 import qualified Reflex.Dom             as RD
-import           Reflex.Patch           (ComposeMaybe (..), PatchDMap (..))
+--import           Reflex.Patch           (ComposeMaybe (..), PatchDMap (..))
 
-import           Data.Dependent.Map     (DMap, DSum ((:=>)))
+
 import qualified Data.Dependent.Map     as DM
 
 import           Control.Monad.Fix      (MonadFix)
 import           Control.Monad.Identity (Identity (..), void)
 import           Data.Functor.Compose   (Compose (Compose, getCompose))
-                 
+
 import           Data.Proxy             (Proxy (..))
 
 
 
 -- This just says we can sequence in the way of monadAdjust
 -- And then turn the result into a Dynamic
+-- remove GCOmpare here.  Adds a dependency here for no good reason
 class DM.GCompare k=>Sequenceable (d :: (* -> *) -> (* -> *) -> *) (pd :: (* -> *) -> (* -> *) -> *)  (k :: * -> *) where
   sequenceWithPatch::(R.Reflex t, R.MonadAdjust t m)=>d k m -> R.Event t (pd k m) -> m (d k Identity, R.Event t (pd k Identity))
 --  patchPairToDynamic::Patch p=>PatchTarget p -> R.Event t p -> m (Dynamic t p)
@@ -141,8 +142,6 @@ listWithKeyShallowDiffGeneral initialVals valsChanged mkChild = do
     mkChild k v $ R.select childValChangedSelector $ makeSelKey' k
 
 
-instance Ord k=>Sequenceable DM.DMap PatchDMap (Const2 k a) where
-  sequenceWithPatch = R.sequenceDMapWithAdjust
 
 
 
