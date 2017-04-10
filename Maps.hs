@@ -12,16 +12,19 @@ module Reflex.Dom.Contrib.ListHoldFunctions.Maps
   (
     diffMapNoEq
   , diffMap
+  , R.distributeMapOverDynPure  -- from Reflex
   , listHoldWithKeyMap
   , listWithKeyMap
   , diffIntMapNoEq
   , diffIntMap
+  , distributeIntMapOverDynPure
   , listWithKeyShallowDiffMap
   , listHoldWithKeyIntMap
   , listWithKeyIntMap
   , listWithKeyShallowDiffIntMap
   , diffHashMapNoEq
   , diffHashMap
+  , distributeHashMapOverDynPure
   , listHoldWithKeyHashMap
   , listWithKeyHashMap
   , listWithKeyShallowDiffHashMap
@@ -61,7 +64,6 @@ import           Data.These                                (These (..))
 
 instance Ord k=>Sequenceable DM.DMap PatchDMap (Const2 k a) where
   sequenceWithPatch = R.sequenceDMapWithAdjust
-
 
 instance Ord k=>Diffable (Map k) (Compose (Map k) Maybe) where
   emptyContainer _ = Map.empty
@@ -145,6 +147,9 @@ intMapToDMap = intMapWithFunctorToDMap . fmap Identity
 dmapToIntMap :: DMap (Const2 Int v) Identity -> IntMap v
 dmapToIntMap = IM.fromDistinctAscList . fmap (\(Const2 k :=> Identity v) -> (k, v)) . DM.toAscList
 
+distributeIntMapOverDynPure::R.Reflex t=>IntMap (R.Dynamic t v) -> R.Dynamic t (IntMap v)
+distributeIntMapOverDynPure = fmap dmapToIntMap . R.distributeDMapOverDynPure . intMapWithFunctorToDMap
+
 instance Diffable IntMap (Compose IntMap Maybe) where
   emptyContainer _ = IM.empty
   toDiff = Compose . fmap Just
@@ -224,6 +229,10 @@ hashMapToDMap = hashMapWithFunctorToDMap . fmap Identity
 
 dmapToHashMap ::(Hashable k, Eq k)=>DMap (Const2 k v) Identity -> HashMap k v
 dmapToHashMap = HM.fromList . fmap (\(Const2 k :=> Identity v) -> (k, v)) . DM.toList
+
+distributeHashMapOverDynPure::(R.Reflex t, Ord k, Hashable k)=>HashMap k (R.Dynamic t v) -> R.Dynamic t (HashMap k v)
+distributeHashMapOverDynPure = fmap dmapToHashMap . R.distributeDMapOverDynPure . hashMapWithFunctorToDMap
+
 
 instance (Hashable k, Ord k)=>Diffable (HashMap k) (Compose (HashMap k) Maybe) where
   emptyContainer _ = HM.empty
