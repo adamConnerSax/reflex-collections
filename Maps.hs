@@ -10,14 +10,21 @@
 {-# LANGUAGE UndecidableInstances  #-}
 module Reflex.Dom.Contrib.ListHoldFunctions.Maps
   (
-    listHoldWithKeyMap
+    diffMapNoEq
+  , diffMap
+  , listHoldWithKeyMap
   , listWithKeyMap
+  , diffIntMapNoEq
+  , diffIntMap
   , listWithKeyShallowDiffMap
   , listHoldWithKeyIntMap
   , listWithKeyIntMap
+  , listWithKeyShallowDiffIntMap
+  , diffHashMapNoEq
+  , diffHashMap
   , listHoldWithKeyHashMap
-
-
+  , listWithKeyHashMap
+  , listWithKeyShallowDiffHashMap
   ) where
 
 import           Reflex.Dom.Contrib.ListHoldFunctions.Core
@@ -59,10 +66,15 @@ instance Ord k=>Sequenceable DM.DMap PatchDMap (Const2 k a) where
 instance Ord k=>Diffable (Map k) (Compose (Map k) Maybe) where
   emptyContainer _ = Map.empty
   toDiff = Compose . fmap Just
-  diff old new = Compose $ flip fmap (align old new) $ \case
+  diffNoEq old new = Compose $ flip fmap (align old new) $ \case
     This _ -> Nothing -- in old but not new, so delete
     That v -> Just v -- in new but not old, so put in patch
     These _ v -> Just v -- in both and without Eq I don't know if the value changed, so put possibly new value in patch
+
+  diff old new = Compose $ flip Map.mapMaybe (align old new) $ \case
+    This _ -> Just Nothing -- in old but not new, so delete
+    That v -> Just $ Just v -- in new but not old, so put in patch
+    These oldV newV -> if oldV == newV then Nothing else Just $ Just newV -- in both and without Eq I don't know if the value changed, so put possibly new value in patch
 
   -- NB: I'm sure Ryan's way is better here but this is clearer to me so I'll keep it for development
   applyDiff patch old = insertions `Map.union` (old `Map.difference` deletions) where
@@ -103,6 +115,12 @@ instance Ord k=>HasFan (Compose (Map k) Maybe) v where
   makeSelKey _ _ = Const2
 
 
+diffMapNoEq::Ord k=>Map k v -> Map k v -> Map k (Maybe v)
+diffMapNoEq old new = getCompose $ diffNoEq old new
+
+diffMap::(Ord k, Eq v)=>Map k v -> Map k v -> Map k (Maybe v)
+diffMap old new = getCompose $ diff old new
+
 
 listHoldWithKeyMap::forall t m k v a. (RD.DomBuilder t m, R.MonadHold t m,Ord k)=>Map k v->R.Event t (Map k (Maybe v))->(k->v->m a)->m (R.Dynamic t (Map k a))
 listHoldWithKeyMap c diffCEv = listHoldWithKeyGeneral c (Compose <$> diffCEv)
@@ -117,6 +135,7 @@ listWithKeyMap = listWithKeyGeneral
 
 -- intMap
 
+
 intMapWithFunctorToDMap :: IntMap (f v) -> DMap (Const2 Int v) f
 intMapWithFunctorToDMap = DM.fromDistinctAscList . fmap (\(k, v) -> Const2 k :=> v) . IM.toAscList
 
@@ -129,10 +148,16 @@ dmapToIntMap = IM.fromDistinctAscList . fmap (\(Const2 k :=> Identity v) -> (k, 
 instance Diffable IntMap (Compose IntMap Maybe) where
   emptyContainer _ = IM.empty
   toDiff = Compose . fmap Just
-  diff old new = Compose $ flip fmap (align old new) $ \case
+  diffNoEq old new = Compose $ flip fmap (align old new) $ \case
     This _ -> Nothing -- in old but not new, so delete
     That v -> Just v -- in new but not old, so put in patch
     These _ v -> Just v -- in both and without Eq I don't know if the value changed, so put possibly new value in patch
+
+  diff old new = Compose $ flip IM.mapMaybe (align old new) $ \case
+    This _ -> Just Nothing -- in old but not new, so delete
+    That v -> Just $ Just v -- in new but not old, so put in patch
+    These oldV newV -> if oldV == newV then Nothing else Just $ Just newV -- in both and without Eq I don't know if the value changed, so put possibly new value in patch
+
 
   -- NB: I'm sure Ryan's way is better here but this is clearer to me so I'll keep it for development
   applyDiff patch old = insertions `IM.union` (old `IM.difference` deletions) where
@@ -171,6 +196,12 @@ instance HasFan (Compose IntMap Maybe) v where
   doFan _ = R.fan . fmap intMapToDMap . fmap (IM.mapMaybe id) . fmap getCompose
   makeSelKey _ _ = Const2
 
+diffIntMapNoEq::IntMap v -> IntMap v -> IntMap (Maybe v)
+diffIntMapNoEq old new = getCompose $ diffNoEq old new
+
+diffIntMap::Eq v=>IntMap v -> IntMap v -> IntMap (Maybe v)
+diffIntMap old new = getCompose $ diff old new
+
 
 listHoldWithKeyIntMap::forall t m v a. (RD.DomBuilder t m, R.MonadHold t m)=>IntMap v->R.Event t (IntMap (Maybe v))->(Int->v->m a)->m (R.Dynamic t (IntMap a))
 listHoldWithKeyIntMap c diffCEv = listHoldWithKeyGeneral c (Compose <$> diffCEv)
@@ -197,10 +228,17 @@ dmapToHashMap = HM.fromList . fmap (\(Const2 k :=> Identity v) -> (k, v)) . DM.t
 instance (Hashable k, Ord k)=>Diffable (HashMap k) (Compose (HashMap k) Maybe) where
   emptyContainer _ = HM.empty
   toDiff = Compose . fmap Just
-  diff old new = Compose $ flip fmap (align old new) $ \case
+
+  diffNoEq old new = Compose $ flip fmap (align old new) $ \case
     This _ -> Nothing -- in old but not new, so delete
     That v -> Just v -- in new but not old, so put in patch
     These _ v -> Just v -- in both and without Eq I don't know if the value changed, so put possibly new value in patch
+
+  diff old new = Compose $ flip HM.mapMaybe (align old new) $ \case
+    This _ -> Just Nothing -- in old but not new, so delete
+    That v -> Just $ Just v -- in new but not old, so put in patch
+    These oldV newV -> if oldV == newV then Nothing else Just $ Just newV -- in both and without Eq I don't know if the value changed, so put possibly new value in patch
+
 
   -- NB: I'm sure Ryan's way is better here but this is clearer to me so I'll keep it for development
   applyDiff patch old = insertions `HM.union` (old `HM.difference` deletions) where
@@ -240,6 +278,12 @@ instance (Hashable k,Ord k)=>HasFan (Compose (HashMap k) Maybe) v where
   doFan _ = R.fan . fmap hashMapToDMap . fmap (HM.mapMaybe id) . fmap getCompose
   makeSelKey _ _ = Const2
 
+
+diffHashMapNoEq::(Ord k, Hashable k)=>HashMap k v -> HashMap k v -> HashMap k (Maybe v)
+diffHashMapNoEq old new = getCompose $ diffNoEq old new
+
+diffHashMap::(Ord k, Hashable k, Eq v)=>HashMap k v -> HashMap k v -> HashMap k (Maybe v)
+diffHashMap old new = getCompose $ diff old new
 
 listHoldWithKeyHashMap::forall t m k v a. (RD.DomBuilder t m, R.MonadHold t m,Ord k, Hashable k)
   =>HashMap k v->R.Event t (HashMap k (Maybe v))->(k->v->m a)->m (R.Dynamic t (HashMap k a))

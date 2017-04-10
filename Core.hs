@@ -86,10 +86,11 @@ class HasFan (a :: * -> *) v where
 class Diffable (f :: * -> *) (df :: * -> *) where
   emptyContainer::Proxy df -> f v
   toDiff::f v-> df v -- this can always be done via toDiff = flip diffD emptyContainer
-  diff::f v -> f v -> df v
+  diffNoEq::f v -> f v -> df v
+  diff::Eq v=>f v -> f v -> df v
   applyDiff::df v -> f v -> f v
   diffOnlyKeyChanges::f v -> f v -> df v
-  editDiffLeavingDeletes::Proxy f->df v -> df k -> df v -- this removes 2nd diff from first, except when first indicates a delete.
+  editDiffLeavingDeletes::Proxy f->df v -> df k -> df v -- this removes 2nd diff from first, except when first indicates a delete. May not generalize.
 
 
 listWithKeyGeneral :: forall t m f k v a. (RD.DomBuilder t m
