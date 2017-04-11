@@ -12,11 +12,13 @@ module Reflex.Dom.Contrib.ListHoldFunctions.Maps
   (
     diffMapNoEq
   , diffMap
+  , applyMapDiff
   , R.distributeMapOverDynPure  -- from Reflex
   , listHoldWithKeyMap
   , listWithKeyMap
   , diffIntMapNoEq
   , diffIntMap
+  , applyIntMapDiff
   , distributeIntMapOverDynPure
   , listWithKeyShallowDiffMap
   , listHoldWithKeyIntMap
@@ -24,6 +26,7 @@ module Reflex.Dom.Contrib.ListHoldFunctions.Maps
   , listWithKeyShallowDiffIntMap
   , diffHashMapNoEq
   , diffHashMap
+  , applyHashMapDiff
   , distributeHashMapOverDynPure
   , listHoldWithKeyHashMap
   , listWithKeyHashMap
@@ -94,6 +97,7 @@ instance Ord k=>Diffable (Map k) (Compose (Map k) Maybe) where
           Just _ -> Nothing -- remove from diff
     in Compose $ Map.differenceWith relevantPatch (getCompose da) (getCompose db)
 
+
 instance Ord k=>ToPatchType (Map k) k v a where
   type Diff (Map k) k = Compose (Map k) Maybe
   type SeqType (Map k) k = DM.DMap
@@ -123,6 +127,8 @@ diffMapNoEq old new = getCompose $ diffNoEq old new
 diffMap::(Ord k, Eq v)=>Map k v -> Map k v -> Map k (Maybe v)
 diffMap old new = getCompose $ diff old new
 
+applyMapDiff::Ord k=>Map k (Maybe v) -> Map k v -> Map k v
+applyMapDiff = applyDiff . Compose
 
 listHoldWithKeyMap::forall t m k v a. (RD.DomBuilder t m, R.MonadHold t m,Ord k)=>Map k v->R.Event t (Map k (Maybe v))->(k->v->m a)->m (R.Dynamic t (Map k a))
 listHoldWithKeyMap c diffCEv = listHoldWithKeyGeneral c (Compose <$> diffCEv)
@@ -207,7 +213,10 @@ diffIntMapNoEq old new = getCompose $ diffNoEq old new
 diffIntMap::Eq v=>IntMap v -> IntMap v -> IntMap (Maybe v)
 diffIntMap old new = getCompose $ diff old new
 
+applyIntMapDiff::IntMap (Maybe v) -> IntMap v -> IntMap v
+applyIntMapDiff = applyDiff . Compose
 
+  
 listHoldWithKeyIntMap::forall t m v a. (RD.DomBuilder t m, R.MonadHold t m)=>IntMap v->R.Event t (IntMap (Maybe v))->(Int->v->m a)->m (R.Dynamic t (IntMap a))
 listHoldWithKeyIntMap c diffCEv = listHoldWithKeyGeneral c (Compose <$> diffCEv)
 
@@ -293,6 +302,10 @@ diffHashMapNoEq old new = getCompose $ diffNoEq old new
 
 diffHashMap::(Ord k, Hashable k, Eq v)=>HashMap k v -> HashMap k v -> HashMap k (Maybe v)
 diffHashMap old new = getCompose $ diff old new
+
+applyHashMapDiff::(Hashable k, Ord k)=>HashMap k (Maybe v) -> HashMap k v -> HashMap k v
+applyHashMapDiff = applyDiff . Compose
+
 
 listHoldWithKeyHashMap::forall t m k v a. (RD.DomBuilder t m, R.MonadHold t m,Ord k, Hashable k)
   =>HashMap k v->R.Event t (HashMap k (Maybe v))->(k->v->m a)->m (R.Dynamic t (HashMap k a))

@@ -36,7 +36,7 @@ import           Data.Proxy             (Proxy (..))
 
 -- This just says we can sequence in the way of monadAdjust
 -- And then turn the result into a Dynamic
--- remove GCOmpare here.  Adds a dependency here for no good reason
+-- remove GCompare here.  Adds a dependency here for no good reason
 class DM.GCompare k=>Sequenceable (d :: (* -> *) -> (* -> *) -> *) (pd :: (* -> *) -> (* -> *) -> *)  (k :: * -> *) where
   sequenceWithPatch::(R.Reflex t, R.MonadAdjust t m)=>d k m -> R.Event t (pd k m) -> m (d k Identity, R.Event t (pd k Identity))
 --  patchPairToDynamic::Patch p=>PatchTarget p -> R.Event t p -> m (Dynamic t p)
