@@ -12,7 +12,11 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Reflex.Dom.Contrib.ListHoldFunctions.Maps
   (
-    diffMapNoEq
+    LHFMap(..)
+  , listHoldWithKeyLHFMap
+  , listWithKeyShallowDiffLHFMap
+  , listWithKeyLHFMap
+  , diffMapNoEq
   , diffMap
   , applyMapDiff
   , R.distributeMapOverDynPure  -- from Reflex
@@ -83,7 +87,8 @@ class LHFMap (f :: * -> *) where
   lhfMapUnion::f v -> f v -> f v
   lhfMapIntersection::f v->f v->f v
   lhfMapDifferenceWith::(a->b->Maybe a)->f a->f b->f a
-
+  lhfMapFromList::[(LHFMapKey f,v)] -> f v 
+  lhfMapToList::f v -> [(LHFMapKey f,v)] 
 
 lhfFanMap::(LHFMap f, Ord (LHFMapKey f), R.Reflex t) => R.Event t (f v) -> R.EventSelector t (Const2 (LHFMapKey f) v)
 lhfFanMap = R.fan . fmap lhfMapToDMap
@@ -102,6 +107,8 @@ instance LHFMap f=>LHFMap (WrapMap f) where
   lhfMapUnion a b = WrapMap $ lhfMapUnion (unWrap a) (unWrap b)
   lhfMapIntersection a b = WrapMap $ lhfMapIntersection (unWrap a) (unWrap b)
   lhfMapDifferenceWith h a b = WrapMap $ lhfMapDifferenceWith h (unWrap a) (unWrap b)
+  lhfMapFromList = WrapMap . lhfMapFromList
+  lhfMapToList = lhfMapToList . unWrap
 
 instance Align f => Align (WrapMap f) where
   nil = WrapMap nil
@@ -115,7 +122,6 @@ instance (LHFMap (WrapMap f), LHFMapKey (WrapMap f) ~ k)=>ToPatchType (WrapMap f
   toSeqTypeWithFunctor h = lhfMapWithFunctorToDMap . lhfMapWithKey h 
   makePatchSeq _ h = PatchDMap . lhfMapWithFunctorToDMap . lhfMapWithKey (\k mv -> ComposeMaybe $ fmap (h k) mv) . getCompose 
   fromSeqType _ _ = dmapToLHFMap
-
 
 instance (LHFMap (WrapMap f), Align (WrapMap f), Functor (WrapMap f))=>Diffable (WrapMap f) (Compose (WrapMap f) Maybe) where
   emptyContainer _ = lhfEmptyMap
@@ -141,7 +147,6 @@ instance (LHFMap (WrapMap f), Align (WrapMap f), Functor (WrapMap f))=>Diffable 
           Just _ -> Nothing -- remove from diff
     in Compose $ lhfMapDifferenceWith relevantPatch (getCompose da) (getCompose db)
 
-
 instance (LHFMap (WrapMap f), Ord (LHFMapKey (WrapMap f)))=>HasFan (WrapMap f) v where
   type FanInKey (WrapMap f) = LHFMapKey (WrapMap f)
   type FanSelKey (WrapMap f) v = Const2 (LHFMapKey (WrapMap f)) v
@@ -153,6 +158,36 @@ instance (LHFMap (WrapMap f), Ord (LHFMapKey (WrapMap f)))=>HasFan (Compose (Wra
   type FanSelKey (Compose (WrapMap f) Maybe) v = Const2 (LHFMapKey (WrapMap f)) v
   doFan _ = lhfFanMap . fmap (lhfMapMaybe id) . fmap getCompose 
   makeSelKey _ _ = Const2
+
+
+listHoldWithKeyLHFMap::forall f t m k v a. (LHFMap f
+                                           , LHFMapKey f ~ k
+                                           , Ord k
+                                           , RD.DomBuilder t m
+                                           , R.MonadHold t m)
+  =>f v->R.Event t (f (Maybe v))->(k->v->m a)->m (R.Dynamic t (f a))
+listHoldWithKeyLHFMap c diffCEv h = fmap unWrap <$> listHoldWithKeyGeneral (WrapMap c) (Compose . WrapMap <$> diffCEv) h
+
+listWithKeyShallowDiffLHFMap::forall f t m k v a. (LHFMap f
+                                                  , LHFMapKey f ~ k
+                                                  , Align f
+                                                  , Ord k
+                                                  , RD.DomBuilder t m
+                                                  , MonadFix m
+                                                  , R.MonadHold t m)
+  => f v -> R.Event t (f (Maybe v)) -> (k -> v -> R.Event t v -> m a) -> m (R.Dynamic t (f a))
+listWithKeyShallowDiffLHFMap c diffCEv  h = fmap unWrap <$> listWithKeyShallowDiffGeneral (WrapMap c) (Compose . WrapMap <$> diffCEv) h
+
+listWithKeyLHFMap::forall f t m k v a. (LHFMap f
+                                       , LHFMapKey f ~ k
+                                       , Align f
+                                       , Ord k
+                                       , RD.DomBuilder t m
+                                       , MonadFix m
+                                       , R.MonadHold t m
+                                       , RD.PostBuild t m)
+  =>R.Dynamic t (f v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
+listWithKeyLHFMap dc h = fmap unWrap <$> listWithKeyGeneral (WrapMap <$> dc) h
 
 
 instance Ord k=>LHFMap (Map k) where
@@ -167,61 +202,39 @@ instance Ord k=>LHFMap (Map k) where
   lhfMapUnion = Map.union
   lhfMapIntersection = Map.intersection
   lhfMapDifferenceWith = Map.differenceWith
+  lhfMapFromList = Map.fromList
+  lhfMapToList = Map.toList
 
-{-
-instance Ord k=>Diffable (Map k) (Compose (Map k) Maybe) where
-  emptyContainer _ = Map.empty
-  toDiff = Compose . fmap Just
-  diffNoEq old new = Compose $ flip fmap (align old new) $ \case
-    This _ -> Nothing -- in old but not new, so delete
-    That v -> Just v -- in new but not old, so put in patch
-    These _ v -> Just v -- in both and without Eq I don't know if the value changed, so put possibly new value in patch
+instance LHFMap IntMap where
+  type LHFMapKey IntMap = Int
+  lhfMapToDMap = intMapToDMap
+  lhfMapWithFunctorToDMap = intMapWithFunctorToDMap
+  dmapToLHFMap = dmapToIntMap
+  lhfEmptyMap = IM.empty
+  lhfMapWithKey = IM.mapWithKey
+  lhfMapMaybe = IM.mapMaybe
+  lhfMapFilter = IM.filter
+  lhfMapUnion = IM.union
+  lhfMapIntersection = IM.intersection
+  lhfMapDifferenceWith = IM.differenceWith
+  lhfMapFromList = IM.fromList
+  lhfMapToList = IM.toList
 
-  diff old new = Compose $ flip Map.mapMaybe (align old new) $ \case
-    This _ -> Just Nothing -- in old but not new, so delete
-    That v -> Just $ Just v -- in new but not old, so put in patch
-    These oldV newV -> if oldV == newV then Nothing else Just $ Just newV -- in both and without Eq I don't know if the value changed, so put possibly new value in patch
+instance (Ord k, Hashable k)=>LHFMap (HashMap k) where
+  type LHFMapKey (HashMap k) = k
+  lhfMapToDMap = hashMapToDMap
+  lhfMapWithFunctorToDMap = hashMapWithFunctorToDMap
+  dmapToLHFMap = dmapToHashMap
+  lhfEmptyMap = HM.empty
+  lhfMapWithKey = HM.mapWithKey
+  lhfMapMaybe = HM.mapMaybe
+  lhfMapFilter = HM.filter
+  lhfMapUnion = HM.union
+  lhfMapIntersection = HM.intersection
+  lhfMapDifferenceWith = HM.differenceWith
+  lhfMapFromList = HM.fromList
+  lhfMapToList = HM.toList
 
-  -- NB: I'm sure Ryan's way is better here but this is clearer to me so I'll keep it for development
-  applyDiff patch old = insertions `Map.union` (old `Map.difference` deletions) where
-    deletions = Map.filter isNothing (getCompose patch)
-    insertions = Map.mapMaybe id  $ (getCompose patch) `Map.difference` deletions
-
-  diffOnlyKeyChanges olds news = Compose $ flip Map.mapMaybe (align olds news) $ \case
-    This _ -> Just Nothing
-    These _ _ -> Nothing
-    That new -> Just $ Just new
-
-  editDiffLeavingDeletes _ da db =
-    let relevantPatch patch _ = case patch of
-          Nothing -> Just Nothing -- it's a delete
-          Just _ -> Nothing -- remove from diff
-    in Compose $ Map.differenceWith relevantPatch (getCompose da) (getCompose db)
-
-
-instance Ord k=>ToPatchType (Map k) k v a where
-  type Diff (Map k) k = Compose (Map k) Maybe
-  type SeqType (Map k) k = DM.DMap
-  type SeqPatchType (Map k) k = PatchDMap
-  type SeqTypeKey (Map k) k a = Const2 k a
-  toSeqTypeWithFunctor h = mapWithFunctorToDMap . Map.mapWithKey h
-  makePatchSeq _ h = PatchDMap . mapWithFunctorToDMap . Map.mapWithKey (\k mv -> ComposeMaybe $ fmap (h k) mv) . getCompose
-  fromSeqType _ _ = dmapToMap
-
-instance Ord k=>HasFan (Map k) v where
-  type FanInKey (Map k) = k
-  type FanSelKey (Map k) v = Const2 k v
-  doFan _ = R.fanMap {- . fmap (Map.mapMaybe id) . fmap getCompose -}
-  makeSelKey _ _ = Const2
-
-
-instance Ord k=>HasFan (Compose (Map k) Maybe) v where
-  type FanInKey (Compose (Map k) Maybe) = k
-  type FanSelKey (Compose (Map k) Maybe) v = Const2 k v
-  doFan _ = R.fanMap . fmap (Map.mapMaybe id) . fmap getCompose
-  makeSelKey _ _ = Const2
-
--}
 
 diffMapNoEq::Diffable (WrapMap f) (Compose (WrapMap f) Maybe)=>f v -> f v -> f (Maybe v)
 diffMapNoEq old new = unWrap . getCompose $ diffNoEq (WrapMap old) (WrapMap new)
@@ -244,7 +257,6 @@ listWithKeyMap::forall t m k v a. (RD.DomBuilder t m, MonadFix m, R.MonadHold t 
 listWithKeyMap dc f = fmap unWrap <$> listWithKeyGeneral (WrapMap <$> dc) f
 
 -- intMap
-
 
 intMapWithFunctorToDMap :: IntMap (f v) -> DMap (Const2 Int v) f
 intMapWithFunctorToDMap = DM.fromDistinctAscList . fmap (\(k, v) -> Const2 k :=> v) . IM.toAscList
@@ -482,5 +494,59 @@ instance ListHoldMap (Map k) where
   lhMapUnion = Map.union
   lhMapIntersection = Map.intersection
   lhMapDifferenceWith = Map.differenceWith
+
+-}
+{-
+instance Ord k=>Diffable (Map k) (Compose (Map k) Maybe) where
+  emptyContainer _ = Map.empty
+  toDiff = Compose . fmap Just
+  diffNoEq old new = Compose $ flip fmap (align old new) $ \case
+    This _ -> Nothing -- in old but not new, so delete
+    That v -> Just v -- in new but not old, so put in patch
+    These _ v -> Just v -- in both and without Eq I don't know if the value changed, so put possibly new value in patch
+
+  diff old new = Compose $ flip Map.mapMaybe (align old new) $ \case
+    This _ -> Just Nothing -- in old but not new, so delete
+    That v -> Just $ Just v -- in new but not old, so put in patch
+    These oldV newV -> if oldV == newV then Nothing else Just $ Just newV -- in both and without Eq I don't know if the value changed, so put possibly new value in patch
+
+  -- NB: I'm sure Ryan's way is better here but this is clearer to me so I'll keep it for development
+  applyDiff patch old = insertions `Map.union` (old `Map.difference` deletions) where
+    deletions = Map.filter isNothing (getCompose patch)
+    insertions = Map.mapMaybe id  $ (getCompose patch) `Map.difference` deletions
+
+  diffOnlyKeyChanges olds news = Compose $ flip Map.mapMaybe (align olds news) $ \case
+    This _ -> Just Nothing
+    These _ _ -> Nothing
+    That new -> Just $ Just new
+
+  editDiffLeavingDeletes _ da db =
+    let relevantPatch patch _ = case patch of
+          Nothing -> Just Nothing -- it's a delete
+          Just _ -> Nothing -- remove from diff
+    in Compose $ Map.differenceWith relevantPatch (getCompose da) (getCompose db)
+
+
+instance Ord k=>ToPatchType (Map k) k v a where
+  type Diff (Map k) k = Compose (Map k) Maybe
+  type SeqType (Map k) k = DM.DMap
+  type SeqPatchType (Map k) k = PatchDMap
+  type SeqTypeKey (Map k) k a = Const2 k a
+  toSeqTypeWithFunctor h = mapWithFunctorToDMap . Map.mapWithKey h
+  makePatchSeq _ h = PatchDMap . mapWithFunctorToDMap . Map.mapWithKey (\k mv -> ComposeMaybe $ fmap (h k) mv) . getCompose
+  fromSeqType _ _ = dmapToMap
+
+instance Ord k=>HasFan (Map k) v where
+  type FanInKey (Map k) = k
+  type FanSelKey (Map k) v = Const2 k v
+  doFan _ = R.fanMap {- . fmap (Map.mapMaybe id) . fmap getCompose -}
+  makeSelKey _ _ = Const2
+
+
+instance Ord k=>HasFan (Compose (Map k) Maybe) v where
+  type FanInKey (Compose (Map k) Maybe) = k
+  type FanSelKey (Compose (Map k) Maybe) v = Const2 k v
+  doFan _ = R.fanMap . fmap (Map.mapMaybe id) . fmap getCompose
+  makeSelKey _ _ = Const2
 
 -}
