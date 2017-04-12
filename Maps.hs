@@ -65,7 +65,7 @@ import           Data.Align                                (Align (align))
 import           Data.Maybe                                (isNothing)
 import           Data.These                                (These (..))
 
-instance Ord k=>Sequenceable DM.DMap PatchDMap (Const2 k a) where
+instance (DM.GCompare (Const2 k a), Ord k)=>Sequenceable DM.DMap PatchDMap (Const2 k a) where
   sequenceWithPatch = R.sequenceDMapWithAdjust
 
 instance Ord k=>Diffable (Map k) (Compose (Map k) Maybe) where
