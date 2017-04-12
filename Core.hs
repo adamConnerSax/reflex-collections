@@ -28,24 +28,24 @@ import           Data.Proxy             (Proxy (..))
 
 -- This just says we can sequence in the way of monadAdjust
 -- And then turn the result into a Dynamic
-class Sequenceable (d :: (* -> *) -> (* -> *) -> *) (pd :: (* -> *) -> (* -> *) -> *)  (k :: * -> *) where
-  sequenceWithPatch::(R.Reflex t, R.MonadAdjust t m)=>d k m -> R.Event t (pd k m) -> m (d k Identity, R.Event t (pd k Identity))
---  patchPairToDynamic::Patch p=>PatchTarget p -> R.Event t p -> m (Dynamic t p)
+class (R.Patch (pd k Identity)
+      , R.PatchTarget (pd k Identity) ~ d k Identity)=> Sequenceable (d :: (* -> *) -> (* -> *) -> *) (pd :: (* -> *) -> (* -> *) -> *)  (k :: * -> *) where
+  sequenceWithPatch::R.MonadAdjust t m=>d k m -> R.Event t (pd k m) -> m (d k Identity, R.Event t (pd k Identity))
+  patchPairToDynamic::R.MonadHold t m=>d k Identity -> R.Event t (pd k Identity) -> m (R.Dynamic t p)
 
 -- This class has the capabilities to translate f v and its difftype into types that are sequenceable, and then bring the original type back
-class (RD.Patch (SeqPatchType f k (SeqTypeKey f k a) Identity)
-      ,R.PatchTarget (SeqPatchType f k (SeqTypeKey f k a) Identity) ~ SeqType f k (SeqTypeKey f k a) Identity)=>ToPatchType (f :: * -> *) k v a where
+-- This requires that the Diff type be mapped to the correct type for diffing at the sequencable level (e.g., as a DMap).
+class ToPatchType (f :: * -> *) k v a where
   type Diff f k :: * -> *
   type SeqType  f k :: (* -> *) -> (* -> *) -> *
   type SeqPatchType f k :: (* -> *) -> (* -> *) -> *
   type SeqTypeKey f k a :: * -> *
   toSeqTypeWithFunctor::Functor g=>(k->v->g a) -> f v -> SeqType f k (SeqTypeKey f k a) g
-  makePatchSeq::Proxy f->(k->v->g a) -> Diff f k v -> SeqPatchType f k (SeqTypeKey f k a) g
+  makePatchSeq::Functor g=>Proxy f->(k->v->g a) -> Diff f k v -> SeqPatchType f k (SeqTypeKey f k a) g
   fromSeqType::Proxy k->Proxy v->SeqType f k (SeqTypeKey f k a) Identity -> f a
 
-
---Sequenceable and ToPatch are enough for listHoldWithKey
-
+-- Sequenceable and ToPatch are enough for listHoldWithKey
+-- NB: incrementalToDynamic applies the patch to the original so the Diff type here (or, really, whatever makePatchSeq turns it into, must be consistent). 
 listHoldWithKeyGeneral::forall t m f k v a. (RD.DomBuilder t m, R.MonadHold t m
                                             , ToPatchType f k v a
                                             , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k a))
@@ -59,9 +59,9 @@ listHoldWithKeyGeneral c0 c' h = do
       dc0 = toSeqTypeWithFunctor h c0
       dc' = fmap (makePatchSeq' h) c'
   (a0,a') <- sequenceWithPatch dc0 dc'
-  fmap fromSeqType' . R.incrementalToDynamic <$> R.holdIncremental a0 a' --TODO: Move the fromSeqType to the righthand side so it doesn't get fully redone every time
+  fmap fromSeqType' <$> patchPairToDynamic a0 a'
 
--- for the listWithKey and listWithKeyShallow diff we need fan and the ability to take and apply diffs on the original container
+-- for the listWithKey and listWithKeyShallow diff we need to be able to fan events and the ability to take and apply diffs on the original container
 
 -- This class encapsuates the types and functionality required to use "fan"
 class HasFan (a :: * -> *) v where
@@ -73,6 +73,7 @@ class HasFan (a :: * -> *) v where
 
 -- encapsulates the ability to diff two containers and then apply the diff to regain the original
 -- also supports a Map.difference style operation on the diff itself (for splitting out value updates)
+-- diffOnlyKeyChanges and editDiffLeavingDeletes are both too specific, I think.
 -- NB: applyDiffD (diffD x y) y = x
 class Diffable (f :: * -> *) (df :: * -> *) where
   emptyContainer::Proxy df -> f v
