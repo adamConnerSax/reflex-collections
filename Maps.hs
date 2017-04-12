@@ -168,6 +168,7 @@ instance Ord k=>LHFMap (Map k) where
   lhfMapIntersection = Map.intersection
   lhfMapDifferenceWith = Map.differenceWith
 
+{-
 instance Ord k=>Diffable (Map k) (Compose (Map k) Maybe) where
   emptyContainer _ = Map.empty
   toDiff = Compose . fmap Just
@@ -220,6 +221,7 @@ instance Ord k=>HasFan (Compose (Map k) Maybe) v where
   doFan _ = R.fanMap . fmap (Map.mapMaybe id) . fmap getCompose
   makeSelKey _ _ = Const2
 
+-}
 
 diffMapNoEq::Diffable (WrapMap f) (Compose (WrapMap f) Maybe)=>f v -> f v -> f (Maybe v)
 diffMapNoEq old new = unWrap . getCompose $ diffNoEq (WrapMap old) (WrapMap new)
