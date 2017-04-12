@@ -148,6 +148,12 @@ instance (LHFMap (WrapMap f), Ord (LHFMapKey (WrapMap f)))=>HasFan (WrapMap f) v
   doFan _ = lhfFanMap --R.fanMap . unLHMap {- . fmap (Map.mapMaybe id) . fmap getCompose -}
   makeSelKey _ _ = Const2
 
+instance (LHFMap (WrapMap f), Ord (LHFMapKey (WrapMap f)))=>HasFan (Compose (WrapMap f) Maybe) v where
+  type FanInKey (Compose (WrapMap f) Maybe) = LHFMapKey (WrapMap f)
+  type FanSelKey (Compose (WrapMap f) Maybe) v = Const2 (LHFMapKey (WrapMap f)) v
+  doFan _ = lhfFanMap . fmap (lhfMapMaybe id) . fmap getCompose 
+  makeSelKey _ _ = Const2
+
 
 instance Ord k=>LHFMap (Map k) where
   type LHFMapKey (Map k) = k
@@ -161,8 +167,6 @@ instance Ord k=>LHFMap (Map k) where
   lhfMapUnion = Map.union
   lhfMapIntersection = Map.intersection
   lhfMapDifferenceWith = Map.differenceWith
-
-
 
 instance Ord k=>Diffable (Map k) (Compose (Map k) Maybe) where
   emptyContainer _ = Map.empty
@@ -216,26 +220,26 @@ instance Ord k=>HasFan (Compose (Map k) Maybe) v where
   doFan _ = R.fanMap . fmap (Map.mapMaybe id) . fmap getCompose
   makeSelKey _ _ = Const2
 
---diffMapNoEq::(LHFMap (WrapMap f), Ord (LHFMapKey (WrapMap f)))=>Map k v -> Map k v -> Map k (Maybe v)
-diffMapNoEq::Ord k=>Map k v -> Map k v -> Map k (Maybe v)
-diffMapNoEq old new = getCompose $ diffNoEq old new
 
-diffMap::(Ord k, Eq v)=>Map k v -> Map k v -> Map k (Maybe v)
-diffMap old new = getCompose $ diff old new
+diffMapNoEq::Diffable (WrapMap f) (Compose (WrapMap f) Maybe)=>f v -> f v -> f (Maybe v)
+diffMapNoEq old new = unWrap . getCompose $ diffNoEq (WrapMap old) (WrapMap new)
 
-applyMapDiff::Ord k=>Map k (Maybe v) -> Map k v -> Map k v
-applyMapDiff = applyDiff . Compose
+diffMap::(Diffable (WrapMap f) (Compose (WrapMap f) Maybe), Eq v)=>f v -> f v -> f (Maybe v)
+diffMap old new = unWrap . getCompose $ diff (WrapMap old) (WrapMap new)
+
+applyMapDiff::Diffable (WrapMap f) (Compose (WrapMap f) Maybe)=>f (Maybe v) -> f v -> f v
+applyMapDiff d a = unWrap $ applyDiff  (Compose $ WrapMap d) (WrapMap a) 
 
 listHoldWithKeyMap::forall t m k v a. (RD.DomBuilder t m, R.MonadHold t m, Ord k)=>Map k v->R.Event t (Map k (Maybe v))->(k->v->m a)->m (R.Dynamic t (Map k a))
 listHoldWithKeyMap c diffCEv f = fmap unWrap <$> listHoldWithKeyGeneral (WrapMap c) (Compose . WrapMap <$> diffCEv) f
 
 listWithKeyShallowDiffMap::forall t m k v a. (RD.DomBuilder t m, MonadFix m, R.MonadHold t m, Ord k)
   => Map k v -> R.Event t (Map k (Maybe v)) -> (k -> v -> R.Event t v -> m a) -> m (R.Dynamic t (Map k a))
-listWithKeyShallowDiffMap c diffCEv  = listWithKeyShallowDiffGeneral c (Compose <$> diffCEv)
+listWithKeyShallowDiffMap c diffCEv  f = fmap unWrap <$> listWithKeyShallowDiffGeneral (WrapMap c) (Compose . WrapMap <$> diffCEv) f
 
 listWithKeyMap::forall t m k v a. (RD.DomBuilder t m, MonadFix m, R.MonadHold t m, RD.PostBuild t m, Ord k)
   =>R.Dynamic t (Map k v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Map k a))
-listWithKeyMap = listWithKeyGeneral
+listWithKeyMap dc f = fmap unWrap <$> listWithKeyGeneral (WrapMap <$> dc) f
 
 -- intMap
 
