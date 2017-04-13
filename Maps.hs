@@ -60,6 +60,7 @@ class (Functor f, Align f, Ord (LHFMapKey f))=>LHFMap (f :: * -> *) where
   lhfEmptyMap::f v
   lhfMapSingleton::LHFMapKey f -> v -> f v
   lhfMapElems::f v->[v]
+  lhfMapKeys::f v->[LHFMapKey f]
   lhfMapWithKey::(LHFMapKey f -> v -> a) -> f v -> f a
   lhfMapMaybe::(a -> Maybe b) -> f a -> f b
   lhfMapFilter::(v -> Bool) -> f v -> f v
@@ -87,6 +88,7 @@ instance LHFMap f=>LHFMap (WrapMap f) where
   lhfEmptyMap = WrapMap lhfEmptyMap
   lhfMapSingleton k = WrapMap . lhfMapSingleton k
   lhfMapElems = lhfMapElems . unWrapMap
+  lhfMapKeys = lhfMapKeys . unWrapMap
   lhfMapWithKey h = WrapMap . lhfMapWithKey h . unWrapMap
   lhfMapMaybe h = WrapMap . lhfMapMaybe h . unWrapMap
   lhfMapFilter h = WrapMap . lhfMapFilter h . unWrapMap
@@ -219,13 +221,13 @@ instance LHFMap f=>ToElemList (WrapMap f) where
 
 
 selectViewListWithKeyLHFMap::(LHFMap f
-                         , LHFMapKey f ~ k
-                         , Align f
-                         , Ord k
-                         , RD.DomBuilder t m
-                         , MonadFix m
-                         , R.MonadHold t m
-                         , RD.PostBuild t m)
+                             , LHFMapKey f ~ k
+                             , Align f
+                             , Ord k
+                             , RD.DomBuilder t m
+                             , MonadFix m
+                             , R.MonadHold t m
+                             , RD.PostBuild t m)
   =>R.Dynamic t k -> R.Dynamic t (f v) -> (k -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (k,a))
 selectViewListWithKeyLHFMap selection vals mkChild = selectViewListWithKeyGeneral selection (WrapMap <$> vals) mkChild
 
@@ -236,6 +238,7 @@ instance Ord k=>LHFMap (Map k) where
   lhfEmptyMap = Map.empty
   lhfMapSingleton = Map.singleton
   lhfMapElems = Map.elems
+  lhfMapKeys = Map.keys
   lhfMapWithKey = Map.mapWithKey
   lhfMapMaybe = Map.mapMaybe
   lhfMapFilter = Map.filter
@@ -250,6 +253,7 @@ instance LHFMap IntMap where
   lhfEmptyMap = IM.empty
   lhfMapSingleton = IM.singleton
   lhfMapElems = IM.elems
+  lhfMapKeys = IM.keys
   lhfMapWithKey = IM.mapWithKey
   lhfMapMaybe = IM.mapMaybe
   lhfMapFilter = IM.filter
@@ -265,6 +269,7 @@ instance (Ord k, Hashable k)=>LHFMap (HashMap k) where
   lhfEmptyMap = HM.empty
   lhfMapSingleton = HM.singleton
   lhfMapElems = HM.elems
+  lhfMapKeys = HM.keys
   lhfMapWithKey = HM.mapWithKey
   lhfMapMaybe = HM.mapMaybe
   lhfMapFilter = HM.filter
