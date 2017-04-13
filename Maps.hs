@@ -1,15 +1,15 @@
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE RecursiveDo           #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE UndecidableInstances  #-}
-{-# LANGUAGE ConstraintKinds       #-}
+{-# LANGUAGE ConstraintKinds            #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE RecursiveDo                #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE UndecidableInstances       #-}
 module Reflex.Dom.Contrib.ListHoldFunctions.Maps
   (
     LHFMap(..)
@@ -120,24 +120,30 @@ instance LHFMap f=>LHFMap (WrapMap f) where
 
 instance Align f => Align (WrapMap f) where
   nil = WrapMap nil
-  align a b = WrapMap $ align (unWrap a) (unWrap b) 
+  align a b = WrapMap $ align (unWrap a) (unWrap b)
 
 instance (LHFMap (WrapMap f), LHFMapKey (WrapMap f) ~ k)=>ToPatchType (WrapMap f) k v a where
   type Diff (WrapMap f) k = Compose (WrapMap f) Maybe
   type SeqType (WrapMap f) k = DM.DMap
   type SeqPatchType (WrapMap f) k = PatchDMap
   type SeqTypeKey (WrapMap f) k a = Const2 k a
-  toSeqTypeWithFunctor h = lhfMapWithFunctorToDMap . lhfMapWithKey h 
-  makePatchSeq _ h = PatchDMap . lhfMapWithFunctorToDMap . lhfMapWithKey (\k mv -> ComposeMaybe $ fmap (h k) mv) . getCompose 
+  toSeqTypeWithFunctor h = lhfMapWithFunctorToDMap . lhfMapWithKey h
+  makePatchSeq _ h = PatchDMap . lhfMapWithFunctorToDMap . lhfMapWithKey (\k mv -> ComposeMaybe $ fmap (h k) mv) . getCompose
   fromSeqType _ _ = lhfDMapToMap
 
 instance (LHFMap (WrapMap f), Align (WrapMap f), Functor (WrapMap f))=>Diffable (WrapMap f) (Compose (WrapMap f) Maybe) where
   emptyContainer _ = lhfEmptyMap
   toDiff = Compose . fmap Just
-  diff old new = Compose $ flip fmap (align old new) $ \case
+  diffNoEq old new = Compose $ flip fmap (align old new) $ \case
     This _ -> Nothing -- in old but not new, so delete
     That v -> Just v -- in new but not old, so put in patch
     These _ v -> Just v -- in both and without Eq I don't know if the value changed, so put possibly new value in patch
+
+  diff old new = Compose $ flip lhfMapMaybe (align old new) $ \case
+    This _ -> Just Nothing -- in old but not new, so delete
+    That v -> Just $ Just v -- in new but not old, so put in patch
+    These oldV newV -> if oldV == newV then Nothing else Just $ Just newV -- in both and without Eq I don't know if the value changed, so put possibly new value in patch
+
 
   applyDiff patch old = insertions `lhfMapUnion` (old `mapDifference` deletions) where
     deletions = lhfMapFilter isNothing (getCompose patch)
@@ -164,7 +170,7 @@ instance (LHFMap (WrapMap f), Ord (LHFMapKey (WrapMap f)))=>HasFan (WrapMap f) v
 instance (LHFMap (WrapMap f), Ord (LHFMapKey (WrapMap f)))=>HasFan (Compose (WrapMap f) Maybe) v where
   type FanInKey (Compose (WrapMap f) Maybe) = LHFMapKey (WrapMap f)
   type FanSelKey (Compose (WrapMap f) Maybe) v = Const2 (LHFMapKey (WrapMap f)) v
-  doFan _ = lhfFanMap . fmap (lhfMapMaybe id) . fmap getCompose 
+  doFan _ = lhfFanMap . fmap (lhfMapMaybe id) . fmap getCompose
   makeSelKey _ _ = Const2
 
 
@@ -223,7 +229,7 @@ instance LHFMap IntMap where
   lhfMapDifferenceWith = IM.differenceWith
   lhfMapWithFunctorToDMap = DM.fromDistinctAscList . fmap (\(k, v) -> Const2 k :=> v) . IM.toAscList
   lhfDMapToMap = IM.fromDistinctAscList . fmap (\(Const2 k :=> Identity v) -> (k, v)) . DM.toAscList
-    
+
 
 instance (Ord k, Hashable k)=>LHFMap (HashMap k) where
   type LHFMapKey (HashMap k) = k
@@ -246,7 +252,7 @@ lhfMapDiff::(Diffable (WrapMap f) (Compose (WrapMap f) Maybe), Eq v)=>f v -> f v
 lhfMapDiff old new = unWrap . getCompose $ diff (WrapMap old) (WrapMap new)
 
 lhfMapApplyDiff::Diffable (WrapMap f) (Compose (WrapMap f) Maybe)=>f (Maybe v) -> f v -> f v
-lhfMapApplyDiff d a = unWrap $ applyDiff (Compose $ WrapMap d) (WrapMap a) 
+lhfMapApplyDiff d a = unWrap $ applyDiff (Compose $ WrapMap d) (WrapMap a)
 
 
 diffMapNoEq::Diffable (WrapMap f) (Compose (WrapMap f) Maybe)=>f v -> f v -> f (Maybe v)
@@ -256,7 +262,7 @@ diffMap::(Diffable (WrapMap f) (Compose (WrapMap f) Maybe), Eq v)=>f v -> f v ->
 diffMap old new = unWrap . getCompose $ diff (WrapMap old) (WrapMap new)
 
 applyMapDiff::Diffable (WrapMap f) (Compose (WrapMap f) Maybe)=>f (Maybe v) -> f v -> f v
-applyMapDiff d a = unWrap $ applyDiff (Compose $ WrapMap d) (WrapMap a) 
+applyMapDiff d a = unWrap $ applyDiff (Compose $ WrapMap d) (WrapMap a)
 
 ---
 
@@ -345,7 +351,7 @@ diffIntMap old new = getCompose $ diff old new
 applyIntMapDiff::IntMap (Maybe v) -> IntMap v -> IntMap v
 applyIntMapDiff = applyDiff . Compose
 
-  
+
 listHoldWithKeyIntMap::forall t m v a. (RD.DomBuilder t m, R.MonadHold t m)
   =>IntMap v->R.Event t (IntMap (Maybe v))->(Int->v->m a)->m (R.Dynamic t (IntMap a))
 listHoldWithKeyIntMap c diffCEv = listHoldWithKeyGeneral c (Compose <$> diffCEv)
