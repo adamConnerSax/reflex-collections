@@ -31,7 +31,7 @@ import           Data.Proxy             (Proxy (..))
 class (R.Patch (pd k Identity)
       , R.PatchTarget (pd k Identity) ~ d k Identity)=> Sequenceable (d :: (* -> *) -> (* -> *) -> *) (pd :: (* -> *) -> (* -> *) -> *)  (k :: * -> *) where
   sequenceWithPatch::R.MonadAdjust t m=>d k m -> R.Event t (pd k m) -> m (d k Identity, R.Event t (pd k Identity))
-  patchPairToDynamic::R.MonadHold t m=>d k Identity -> R.Event t (pd k Identity) -> m (R.Dynamic t p)
+  patchPairToDynamic::(R.Reflex t, R.MonadHold t m)=>d k Identity -> R.Event t (pd k Identity) -> m (R.Dynamic t (d k Identity))
 
 -- This class has the capabilities to translate f v and its difftype into types that are sequenceable, and then bring the original type back
 -- This requires that the Diff type be mapped to the correct type for diffing at the sequencable level (e.g., as a DMap).
