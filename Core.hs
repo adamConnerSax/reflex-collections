@@ -16,6 +16,8 @@ module Reflex.Dom.Contrib.ListHoldFunctions.Core
   , Diffable(..)
   , listWithKeyGeneral
   , listWithKeyShallowDiffGeneral
+  , ToElemList(..)
+  , selectViewListWithKeyGeneral
   ) where
 
 import qualified Reflex                 as R
@@ -24,6 +26,8 @@ import qualified Reflex.Dom             as RD
 import           Data.Dependent.Map                        (DMap,GCompare)
 import           Data.Functor.Misc                         (Const2 (..))
 import           Reflex.Patch                              (PatchDMap (..))
+import           Data.Functor.Compose                      (Compose(Compose,getCompose))
+
 
 import           Control.Monad.Fix      (MonadFix)
 import           Control.Monad.Identity (Identity (..), void)
@@ -94,6 +98,7 @@ class Diffable (f :: * -> *) (df :: * -> *) where
   editDiffLeavingDeletes::Proxy f->df v -> df k -> df v -- this removes 2nd diff from first, except when first indicates a delete. May not generalize.
 
 
+-- | Create a dynamically-changing set of Event-valued widgets.
 listWithKeyGeneral :: forall t m f k v a. (RD.DomBuilder t m
                                           , RD.PostBuild t m
                                           , MonadFix m
@@ -121,7 +126,8 @@ listWithKeyGeneral vals mkChild = do
   listHoldWithKeyGeneral emptyContainer' changeVals $ \k v ->
     mkChild k =<< R.holdDyn v (R.select childValChangedSelector $ makeSelKey' k)
 
-
+-- | Display the given map of items (in key order) using the builder function provided, and update it with the given event.
+-- | 'Nothing' update entries will delete the corresponding children, and 'Just' entries will create them if they do not exist or send an update event to them if they do.
 listWithKeyShallowDiffGeneral :: forall t m f k v a.(RD.DomBuilder t m
                                                     , MonadFix m
                                                     , R.MonadHold t m
@@ -144,36 +150,30 @@ listWithKeyShallowDiffGeneral initialVals valsChanged mkChild = do
     mkChild k v $ R.select childValChangedSelector $ makeSelKey' k
 
 
+class ToElemList (f :: * -> *) where
+  toElemList::f v -> [v]
 
-
-
----- previous things
-{-
--- This class encapsulates the relationship between a container and a difftype, which represents changes to the container.
--- This requires the diff type to be keyed, I think. Or maybe just the original container to have an Align instance?
--- I think this might all be subsumed.  diff and applyDiff should be part of general diffing and voidDiff is easy as long as df is a functor.
--- that leaves emptyVoidDiff...which could be its own thing?  Or part of a structure I don't see yet.
-class ShallowDiffable (df :: * -> *) where
-  emptyVoidDiff::df ()
-  voidDiff::df v->df ()
-  diff::df v->df ()->df v -- akin to Map.differenceWith (\mv _ -> maybe (Just Nothing) (const Nothing) mv)
-  applyDiff::df ()-> df () -> df () -- NB: this is a different type from applyMap
-
-
-listWithKeyShallowDiffGeneral :: forall t m f k v a.(RD.DomBuilder t m
+-- | Create a dynamically-changing set of widgets, one of which is selected at any time.
+selectViewListWithKeyGeneral :: forall t m f k v a. (RD.DomBuilder t m
                                                     , MonadFix m
                                                     , R.MonadHold t m
-                                                    , ToPatchType f k v a -- for the listHold
-                                                    , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k a) -- for the listHold
-                                                    , ShallowDiffable (Diff f k)
-                                                    , HasFan (Diff f k) v
-                                                    , FanInKey (Diff f k) ~ k)
-  => f v -> R.Event t (Diff f k v) -> (k -> v -> R.Event t v -> m a) -> m (R.Dynamic t (f a))
-listWithKeyShallowDiffGeneral initialVals valsChanged mkChild = do
-  let makeSelKey' = makeSelKey (Proxy :: Proxy (Diff f k)) (Proxy :: Proxy v)
-      doFan' = doFan (Proxy :: Proxy v)
-      childValChangedSelector = doFan' valsChanged
-  sentVals <- R.foldDyn applyDiff emptyVoidDiff $ fmap voidDiff valsChanged
-  listHoldWithKeyGeneral initialVals (R.attachWith (flip diff) (R.current sentVals) valsChanged) $ \k v ->
-    mkChild k v $ R.select childValChangedSelector $ makeSelKey' k
--}
+                                                    , RD.PostBuild t m
+                                                    , ToElemList f
+                                                    , ToPatchType f k v (R.Event t (k,a)) -- for the listHold
+                                                    , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k (R.Event t (k,a))) -- for the listHold
+                                                    , Diffable f (Diff f k) -- for the listWithKeyGeneral
+                                                    , Functor (Diff f k)
+                                                    , HasFan f v
+                                                    , FanInKey f ~ k
+                                                    , Ord k)
+  => R.Dynamic t k          -- ^ Current selection key
+  -> R.Dynamic t (f v)      -- ^ Dynamic container of values
+  -> (k -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -- ^ Function to create a widget for a given key from Dynamic value and Dynamic Bool indicating if this widget is currently selected
+  -> m (R.Event t (k, a))        -- ^ Event that fires when any child's return Event fires.  Contains key of an arbitrary firing widget.
+selectViewListWithKeyGeneral selection vals mkChild = do
+  let selectionDemux = R.demux selection -- For good performance, this value must be shared across all children
+  selectChild <- listWithKeyGeneral vals $ \k v -> do
+    let selected = R.demuxed selectionDemux k
+    selectSelf <- mkChild k v selected
+    return $ fmap ((,) k) selectSelf
+  return $ R.switchPromptlyDyn $ R.leftmost . toElemList <$> selectChild
