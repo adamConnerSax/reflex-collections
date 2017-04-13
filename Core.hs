@@ -21,17 +21,26 @@ module Reflex.Dom.Contrib.ListHoldFunctions.Core
 import qualified Reflex                 as R
 import qualified Reflex.Dom             as RD
 
+import           Data.Dependent.Map                        (DMap,GCompare)
+import           Data.Functor.Misc                         (Const2 (..))
+import           Reflex.Patch                              (PatchDMap (..))
+
 import           Control.Monad.Fix      (MonadFix)
 import           Control.Monad.Identity (Identity (..), void)
 
 import           Data.Proxy             (Proxy (..))
 
--- This just says we can sequence in the way of monadAdjust
--- And then turn the result into a Dynamic
+-- This class carries the ability to sequence patches in the way of MonadAdjust And then turn the result into a Dynamic. 
 class (R.Patch (pd k Identity)
       , R.PatchTarget (pd k Identity) ~ d k Identity)=> Sequenceable (d :: (* -> *) -> (* -> *) -> *) (pd :: (* -> *) -> (* -> *) -> *)  (k :: * -> *) where
   sequenceWithPatch::R.MonadAdjust t m=>d k m -> R.Event t (pd k m) -> m (d k Identity, R.Event t (pd k Identity))
   patchPairToDynamic::(R.Reflex t, R.MonadHold t m)=>d k Identity -> R.Event t (pd k Identity) -> m (R.Dynamic t (d k Identity))
+
+-- In particular, we can do sequencing for DMaps
+instance (GCompare (Const2 k a), Ord k)=>Sequenceable DMap PatchDMap (Const2 k a) where
+  sequenceWithPatch = R.sequenceDMapWithAdjust
+  patchPairToDynamic a0 a' = R.incrementalToDynamic <$> R.holdIncremental a0 a'
+
 
 -- This class has the capabilities to translate f v and its difftype into types that are sequenceable, and then bring the original type back
 -- This requires that the Diff type be mapped to the correct type for diffing at the sequencable level (e.g., as a DMap).
