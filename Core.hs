@@ -1,11 +1,11 @@
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE RecursiveDo           #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE TypeFamilies          #-}
 module Reflex.Dom.Contrib.ListHoldFunctions.Core
   (
@@ -23,10 +23,10 @@ module Reflex.Dom.Contrib.ListHoldFunctions.Core
 import qualified Reflex                 as R
 import qualified Reflex.Dom             as RD
 
-import           Data.Dependent.Map                        (DMap,GCompare)
-import           Data.Functor.Misc                         (Const2 (..))
-import           Reflex.Patch                              (PatchDMap (..))
-import           Data.Functor.Compose                      (Compose(Compose,getCompose))
+import           Data.Dependent.Map     (DMap, GCompare)
+import           Data.Functor.Compose   (Compose (Compose, getCompose))
+import           Data.Functor.Misc      (Const2 (..))
+import           Reflex.Patch           (PatchDMap (..))
 
 
 import           Control.Monad.Fix      (MonadFix)
@@ -34,7 +34,7 @@ import           Control.Monad.Identity (Identity (..), void)
 
 import           Data.Proxy             (Proxy (..))
 
--- This class carries the ability to sequence patches in the way of MonadAdjust And then turn the result into a Dynamic. 
+-- This class carries the ability to sequence patches in the way of MonadAdjust And then turn the result into a Dynamic.
 class (R.Patch (pd k Identity)
       , R.PatchTarget (pd k Identity) ~ d k Identity)=> Sequenceable (d :: (* -> *) -> (* -> *) -> *) (pd :: (* -> *) -> (* -> *) -> *)  (k :: * -> *) where
   sequenceWithPatch::R.MonadAdjust t m=>d k m -> R.Event t (pd k m) -> m (d k Identity, R.Event t (pd k Identity))
@@ -58,7 +58,7 @@ class ToPatchType (f :: * -> *) k v a where
   fromSeqType::Proxy k->Proxy v->SeqType f k (SeqTypeKey f k a) Identity -> f a
 
 -- Sequenceable and ToPatch are enough for listHoldWithKey
--- NB: incrementalToDynamic applies the patch to the original so the Diff type here (or, really, whatever makePatchSeq turns it into, must be consistent). 
+-- NB: incrementalToDynamic applies the patch to the original so the Diff type here (or, really, whatever makePatchSeq turns it into, must be consistent).
 listHoldWithKeyGeneral::forall t m f k v a. (RD.DomBuilder t m, R.MonadHold t m
                                             , ToPatchType f k v a
                                             , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k a))
