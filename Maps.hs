@@ -57,6 +57,7 @@ import           Data.These                                (These (..))
 
 class (Functor f, Align f, Ord (LHFMapKey f))=>LHFMap (f :: * -> *) where
   type LHFMapKey f :: *
+  lhfMapNull::f v -> Bool  
   lhfEmptyMap::f v
   lhfMapSingleton::LHFMapKey f -> v -> f v
   lhfMapElems::f v->[v]
@@ -85,6 +86,7 @@ newtype WrapMap f v = WrapMap { unWrapMap::f v } deriving (Functor) -- newtype t
 
 instance LHFMap f=>LHFMap (WrapMap f) where
   type LHFMapKey (WrapMap f) = LHFMapKey f
+  lhfMapNull = lhfMapNull . unWrapMap
   lhfEmptyMap = WrapMap lhfEmptyMap
   lhfMapSingleton k = WrapMap . lhfMapSingleton k
   lhfMapElems = lhfMapElems . unWrapMap
@@ -235,6 +237,7 @@ selectViewListWithKeyLHFMap selection vals mkChild = selectViewListWithKeyGenera
 -- These Maplike things are the easy cases and all useful for listWithKeyShallowDiff based container widgets
 instance Ord k=>LHFMap (Map k) where
   type LHFMapKey (Map k) = k
+  lhfMapNull = Map.null
   lhfEmptyMap = Map.empty
   lhfMapSingleton = Map.singleton
   lhfMapElems = Map.elems
@@ -250,6 +253,7 @@ instance Ord k=>LHFMap (Map k) where
 
 instance LHFMap IntMap where
   type LHFMapKey IntMap = Int
+  lhfMapNull = IM.null
   lhfEmptyMap = IM.empty
   lhfMapSingleton = IM.singleton
   lhfMapElems = IM.elems
@@ -266,6 +270,7 @@ instance LHFMap IntMap where
 
 instance (Ord k, Hashable k)=>LHFMap (HashMap k) where
   type LHFMapKey (HashMap k) = k
+  lhfMapNull = HM.null
   lhfEmptyMap = HM.empty
   lhfMapSingleton = HM.singleton
   lhfMapElems = HM.elems
