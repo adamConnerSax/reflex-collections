@@ -28,13 +28,13 @@ import           Reflex.Dom.Contrib.ListHoldFunctions.Core
 import           Data.Dependent.Map                        (DMap, DSum ((:=>)))
 import qualified Data.Dependent.Map                        as DM
 
-import           Data.Functor.Misc                         (Const2 (..),
+import           Data.Functor.Misc                         (ComposeMaybe (..),
+                                                            Const2 (..),
                                                             dmapToMap,
                                                             mapWithFunctorToDMap)
 import qualified Reflex                                    as R
 import qualified Reflex.Dom                                as RD
-import           Reflex.Patch                              (ComposeMaybe (..),
-                                                            PatchDMap (..))
+import           Reflex.Patch                              (PatchDMap (..))
 
 import           Data.Map                                  (Map)
 import qualified Data.Map                                  as Map
@@ -57,7 +57,7 @@ import           Data.These                                (These (..))
 
 class (Functor f, Align f, Ord (LHFMapKey f))=>LHFMap (f :: * -> *) where
   type LHFMapKey f :: *
-  lhfMapNull::f v -> Bool  
+  lhfMapNull::f v -> Bool
   lhfEmptyMap::f v
   lhfMapSingleton::LHFMapKey f -> v -> f v
   lhfMapElems::f v->[v]
@@ -107,7 +107,7 @@ instance Align f => Align (WrapMap f) where
 newtype WrapA a = WrapA { unWrapA::a }  -- also to avoid overlapping instances
 
 fromWrapA::Functor g=>(k -> v -> g (WrapA a))->(k->v->g a)
-fromWrapA f x y = unWrapA <$> f x y 
+fromWrapA f x y = unWrapA <$> f x y
 
 
 instance (LHFMap (WrapMap f), LHFMapKey (WrapMap f) ~ k)=>ToPatchType (WrapMap f) k v (WrapA a) where
@@ -144,7 +144,7 @@ instance (LHFMap (WrapMap f), Align (WrapMap f), Functor (WrapMap f))=>Diffable 
   editDiffLeavingDeletes _ da db =
     let relevantPatch patch _ = case patch of
           Nothing -> Just Nothing -- it's a delete
-          Just _ -> Nothing -- remove from diff
+          Just _  -> Nothing -- remove from diff
     in Compose $ lhfMapDifferenceWith relevantPatch (getCompose da) (getCompose db)
 
 
