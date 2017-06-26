@@ -42,11 +42,11 @@ import qualified Data.Map                                  as Map
 import           Data.IntMap                               (IntMap)
 import qualified Data.IntMap                               as IM
 
+import           Data.Functor.Compose                      (Compose (Compose),
+                                                            getCompose)
 import           Data.Hashable                             (Hashable)
 import           Data.HashMap.Strict                       (HashMap)
 import qualified Data.HashMap.Strict                       as HM
-
-import           Data.Functor.Compose                      (Compose (Compose, getCompose))
 
 import           Control.Monad.Fix                         (MonadFix)
 import           Control.Monad.Identity                    (Identity (..))
