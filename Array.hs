@@ -70,8 +70,6 @@ dmapToArray dm =
 distributeArrayOverDynPure::(R.Reflex t, Ix k) => A.Array k (R.Dynamic t v) -> R.Dynamic t (A.Array k v)
 distributeArrayOverDynPure = fmap dmapToArray . R.distributeDMapOverDynPure . arrayWithFunctorToDMap
 
--- HERE
-
 newtype ArrayDiff k v = ArrayDiff { diff :: [(k, Maybe v)] }
 
 instance Functor (ArrayDiff k) where
@@ -88,6 +86,8 @@ instance Ix k => ToPatchType (A.Array k) k v a where
   toSeqTypeWithFunctor h = arrayWithFunctorToDMap . arrayMapWithKey h
   makePatchSeq _ h = PatchDMap . DM.fromList . diff . arrayDiffMapWithKey h
   fromSeqType _ _ = dmapToArray
+
+-- HERE
 
 instance (LHFMap (WrapMap f), Align (WrapMap f), Functor (WrapMap f))=>Diffable (WrapMap f) (Compose (WrapMap f) Maybe) where
   emptyContainer _ = lhfEmptyMap
