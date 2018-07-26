@@ -53,9 +53,9 @@ class ToPatchType (f :: * -> *) k v a where
   type SeqType  f k :: (* -> *) -> (* -> *) -> *
   type SeqPatchType f k :: (* -> *) -> (* -> *) -> *
   type SeqTypeKey f k a :: * -> *
-  toSeqTypeWithFunctor::Functor g=>(k->v->g a) -> f v -> SeqType f k (SeqTypeKey f k a) g
-  makePatchSeq::Functor g=>Proxy f->(k->v->g a) -> Diff f k v -> SeqPatchType f k (SeqTypeKey f k a) g
-  fromSeqType::Proxy k->Proxy v->SeqType f k (SeqTypeKey f k a) Identity -> f a
+  toSeqTypeWithFunctor :: Functor g => (k -> v -> g a) -> f v -> SeqType f k (SeqTypeKey f k a) g
+  makePatchSeq :: Functor g => Proxy f -> (k -> v -> g a) -> Diff f k v -> SeqPatchType f k (SeqTypeKey f k a) g
+  fromSeqType :: Proxy k -> Proxy v -> SeqType f k (SeqTypeKey f k a) Identity -> f a
 
 -- Sequenceable and ToPatch are enough for listHoldWithKey
 -- NB: incrementalToDynamic applies the patch to the original so the Diff type here (or, really, whatever makePatchSeq turns it into, must be consistent).
@@ -89,13 +89,13 @@ class HasFan (a :: * -> *) v where
 -- diffOnlyKeyChanges and editDiffLeavingDeletes are both too specific, I think.
 -- NB: applyDiffD (diffD x y) y = x
 class Diffable (f :: * -> *) (df :: * -> *) where
-  emptyContainer::Proxy df -> f v
-  toDiff::f v-> df v -- this can always be done via toDiff = flip diffD emptyContainer
-  diffNoEq::f v -> f v -> df v
-  diff::Eq v=>f v -> f v -> df v
-  applyDiff::df v -> f v -> f v
-  diffOnlyKeyChanges::f v -> f v -> df v
-  editDiffLeavingDeletes::Proxy f->df v -> df k -> df v -- this removes 2nd diff from first, except when first indicates a delete. May not generalize.
+  emptyContainer :: Proxy df -> f v
+  toDiff :: f v -> df v -- this can always be done via toDiff = flip diff emptyContainer
+  diffNoEq :: f v -> f v -> df v
+  diff :: Eq v => f v -> f v -> df v
+  applyDiff :: df v -> f v -> f v
+  diffOnlyKeyChanges :: f v -> f v -> df v
+  editDiffLeavingDeletes :: Proxy f -> df v -> df k -> df v -- this removes 2nd diff from first, except when first indicates a delete. May not generalize.
 
 
 -- | Create a dynamically-changing set of Event-valued widgets.
