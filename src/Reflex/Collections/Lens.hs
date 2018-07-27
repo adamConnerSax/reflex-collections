@@ -5,7 +5,7 @@
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE RecursiveDo           #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
-module Reflex.Dom.Contrib.ListHoldFunctions.Lens where
+module Reflex.Collections.Lens where
 
 import qualified Reflex as R
 import qualified Reflex.Dom as RD

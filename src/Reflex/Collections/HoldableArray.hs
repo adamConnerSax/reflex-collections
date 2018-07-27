@@ -10,7 +10,7 @@
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
-module Reflex.Dom.Contrib.ListHoldFunctions.HoldableArray
+module Reflex.Collections.HoldableArray
   (
    listHoldWithKeyHoldableArray
 {-
@@ -24,30 +24,27 @@ module Reflex.Dom.Contrib.ListHoldFunctions.HoldableArray
 -}
   ) where
 
-import           Reflex.Dom.Contrib.ListHoldFunctions.Core
+import           Reflex.Collections.Core
 
-import           Data.Dependent.Map                        (DMap, DSum ((:=>)))
-import qualified Data.Dependent.Map                        as DM
+import           Data.Dependent.Map      (DMap, DSum ((:=>)))
+import qualified Data.Dependent.Map      as DM
 
-import           Data.Functor.Misc                         (ComposeMaybe (..),
-                                                            Const2 (..),
-                                                            dmapToMap,
-                                                            mapWithFunctorToDMap)
-import qualified Reflex                                    as R
-import qualified Reflex.Dom                                as RD
-import           Reflex.Patch                              (PatchDMap (..))
+import           Data.Functor.Misc       (ComposeMaybe (..), Const2 (..),
+                                          dmapToMap, mapWithFunctorToDMap)
+import qualified Reflex                  as R
+import qualified Reflex.Dom              as RD
+import           Reflex.Patch            (PatchDMap (..))
 
-import qualified Data.Array                                as A
+import qualified Data.Array              as A
 
-import           Data.Functor.Compose                      (Compose (Compose),
-                                                            getCompose)
+import           Data.Functor.Compose    (Compose (Compose), getCompose)
 
-import           Control.Monad.Fix                         (MonadFix)
-import           Control.Monad.Identity                    (Identity (..))
-import           Data.Align                                (Align (..))
-import qualified Data.Foldable                             as F
-import           Data.Maybe                                (isNothing)
-import           Data.These                                (These (..))
+import           Control.Monad.Fix       (MonadFix)
+import           Control.Monad.Identity  (Identity (..))
+import           Data.Align              (Align (..))
+import qualified Data.Foldable           as F
+import           Data.Maybe              (isNothing)
+import           Data.These              (These (..))
 
 arrayMapWithKey :: A.Ix k => (k -> v -> a) -> A.Array k v -> A.Array k a
 arrayMapWithKey h arr =

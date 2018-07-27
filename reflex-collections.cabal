@@ -1,0 +1,65 @@
+name:                reflex-collections
+version:             0.1.0.0
+synopsis:            generalized collection functions for reflex
+description:         Please see README.md
+homepage:            http://github.com/adamConnerSax/reflex-collections#readme
+license:             BSD3
+license-file:        LICENSE
+author:              Adam Conner-Sax
+maintainer:          adam_conner_sax@yahoo.com
+copyright:           2018 Adam Conner-Sax
+category:            Web
+build-type:          Simple
+cabal-version:       >=1.10
+
+flag wkwebview
+  description: Use wkWebview control rather than ghcjs
+  default: False
+
+flag warp
+  description: Use warp rather than ghcjs
+  default: True
+
+flag ghcjs
+  description: Use GHCJS
+  default: False
+  
+                     
+library
+  if flag(wkwebview) || flag(warp)
+   cpp-options: -DUSE_WKWEBVIEW -DUSE_JSADDLE
+  hs-source-dirs: src
+  exposed-modules:
+                  Reflex.Collections.Core
+                  Reflex.Collections.Maps
+                  Reflex.Collections.HoldableArray
+  other-modules:
+
+  if flag(wkwebview) || flag(warp)
+   build-depends: ghcjs-dom 
+                , jsaddle
+  else
+   build-depends: ghcjs-dom
+  build-depends:       base >= 4.7 && < 5
+                     , dependent-map
+                     , array
+                     , reflex
+                     , reflex-dom
+                     , lens
+                     , mtl
+                     , ref-tf
+                     , containers
+                     , these
+                     , hashable
+                     , safe
+                     , unordered-containers >= 0.2.8.0
+  if impl(ghcjs)
+    build-depends:     ghcjs-base
+
+  default-language:    Haskell2010
+  ghc-prof-options: -fprof-auto
+  ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2       
+
+source-repository head
+  type:     git
+  location: https://github.com/adamConnerSax/reflex-collections

@@ -7,7 +7,7 @@
 {-# LANGUAGE RecursiveDo           #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
-module Reflex.Dom.Contrib.ListHoldFunctions.Core
+module Reflex.Collections.Core
   (
     Sequenceable(..)
   , ToPatchType(..)

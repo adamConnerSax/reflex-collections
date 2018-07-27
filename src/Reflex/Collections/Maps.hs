@@ -10,7 +10,7 @@
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
-module Reflex.Dom.Contrib.ListHoldFunctions.Maps
+module Reflex.Collections.Maps
   (
     LHFMap(..)
   , listHoldWithKeyLHFMap
@@ -23,36 +23,33 @@ module Reflex.Dom.Contrib.ListHoldFunctions.Maps
   , distributeLHFMapOverDynPure
   ) where
 
-import           Reflex.Dom.Contrib.ListHoldFunctions.Core
+import           Reflex.Collections.Core
 
-import           Data.Dependent.Map                        (DMap, DSum ((:=>)))
-import qualified Data.Dependent.Map                        as DM
+import           Data.Dependent.Map      (DMap, DSum ((:=>)))
+import qualified Data.Dependent.Map      as DM
 
-import           Data.Functor.Misc                         (ComposeMaybe (..),
-                                                            Const2 (..),
-                                                            dmapToMap,
-                                                            mapWithFunctorToDMap)
-import qualified Reflex                                    as R
-import qualified Reflex.Dom                                as RD
-import           Reflex.Patch                              (PatchDMap (..))
+import           Data.Functor.Misc       (ComposeMaybe (..), Const2 (..),
+                                          dmapToMap, mapWithFunctorToDMap)
+import qualified Reflex                  as R
+import qualified Reflex.Dom              as RD
+import           Reflex.Patch            (PatchDMap (..))
 
-import           Data.Map                                  (Map)
-import qualified Data.Map                                  as Map
+import           Data.Map                (Map)
+import qualified Data.Map                as Map
 
-import           Data.IntMap                               (IntMap)
-import qualified Data.IntMap                               as IM
+import           Data.IntMap             (IntMap)
+import qualified Data.IntMap             as IM
 
-import           Data.Functor.Compose                      (Compose (Compose),
-                                                            getCompose)
-import           Data.Hashable                             (Hashable)
-import           Data.HashMap.Strict                       (HashMap)
-import qualified Data.HashMap.Strict                       as HM
+import           Data.Functor.Compose    (Compose (Compose), getCompose)
+import           Data.Hashable           (Hashable)
+import           Data.HashMap.Strict     (HashMap)
+import qualified Data.HashMap.Strict     as HM
 
-import           Control.Monad.Fix                         (MonadFix)
-import           Control.Monad.Identity                    (Identity (..))
-import           Data.Align                                (Align (..))
-import           Data.Maybe                                (isNothing)
-import           Data.These                                (These (..))
+import           Control.Monad.Fix       (MonadFix)
+import           Control.Monad.Identity  (Identity (..))
+import           Data.Align              (Align (..))
+import           Data.Maybe              (isNothing)
+import           Data.These              (These (..))
 
 
 class (Functor f, Align f, Ord (LHFMapKey f))=>LHFMap (f :: * -> *) where
