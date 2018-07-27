@@ -31,7 +31,7 @@ import qualified Data.Dependent.Map      as DM
 import           Data.Functor.Misc       (ComposeMaybe (..), Const2 (..),
                                           dmapToMap, mapWithFunctorToDMap)
 import qualified Reflex                  as R
-import qualified Reflex.Dom              as RD
+--import qualified Reflex.Dom              as RD
 import           Reflex.Patch            (PatchDMap (..))
 
 import           Data.Map                (Map)
@@ -172,10 +172,10 @@ toWrapA::Functor g=>(k -> v -> g a) -> (k -> v -> g (WrapA a))
 toWrapA f x y = WrapA <$> f x y
 
 
-listHoldWithKeyLHFMap::forall f t m k v a. (LHFMap f
+listHoldWithKeyLHFMap::forall f t m k v a. ( LHFMap f
                                            , LHFMapKey f ~ k
                                            , Ord k
-                                           , RD.DomBuilder t m
+                                           , R.Adjustable t m
                                            , R.MonadHold t m)
   =>f v->R.Event t (f (Maybe v))->(k->v->m a)->m (R.Dynamic t (f a))
 listHoldWithKeyLHFMap c diffCEv h = fmap (fmap unWrapA . unWrapMap) <$> listHoldWithKeyGeneral (WrapMap c) (Compose . WrapMap <$> diffCEv) (toWrapA h)
@@ -184,29 +184,29 @@ toWrapA3::Functor g=>(k -> v -> e -> g a) -> (k -> v -> e -> g (WrapA a))
 toWrapA3 f x y z = WrapA <$> f x y z
 
 
-listWithKeyShallowDiffLHFMap::forall f t m k v a. (LHFMap f
+listWithKeyShallowDiffLHFMap::forall f t m k v a. ( LHFMap f
                                                   , LHFMapKey f ~ k
                                                   , Align f
                                                   , Ord k
-                                                  , RD.DomBuilder t m
+                                                  , R.Adjustable t m
                                                   , MonadFix m
                                                   , R.MonadHold t m)
   => f v -> R.Event t (f (Maybe v)) -> (k -> v -> R.Event t v -> m a) -> m (R.Dynamic t (f a))
 listWithKeyShallowDiffLHFMap c diffCEv  h = fmap (fmap unWrapA . unWrapMap) <$> listWithKeyShallowDiffGeneral (WrapMap c) (Compose . WrapMap <$> diffCEv) (toWrapA3 h)
 
-listWithKeyLHFMap::forall f t m k v a. (LHFMap f
+listWithKeyLHFMap::forall f t m k v a. ( LHFMap f
                                        , LHFMapKey f ~ k
                                        , Align f
                                        , Ord k
-                                       , RD.DomBuilder t m
+                                       , R.Adjustable t m
                                        , MonadFix m
                                        , R.MonadHold t m
-                                       , RD.PostBuild t m)
+                                       , R.PostBuild t m)
   =>R.Dynamic t (f v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
 listWithKeyLHFMap dc h = fmap (fmap unWrapA . unWrapMap) <$> listWithKeyGeneral (WrapMap <$> dc) (toWrapA h)
 
 
-instance (LHFMap (WrapMap f), LHFMapKey (WrapMap f) ~ k)=>ToPatchType (WrapMap f) k v (R.Event t (k,a)) where
+instance (LHFMap (WrapMap f), LHFMapKey (WrapMap f) ~ k) => ToPatchType (WrapMap f) k v (R.Event t (k,a)) where
   type Diff (WrapMap f) k = Compose (WrapMap f) Maybe
   type SeqType (WrapMap f) k = DM.DMap
   type SeqPatchType (WrapMap f) k = PatchDMap
@@ -219,14 +219,14 @@ instance LHFMap f=>ToElemList (WrapMap f) where
   toElemList = lhfMapElems . unWrapMap
 
 
-selectViewListWithKeyLHFMap::(LHFMap f
+selectViewListWithKeyLHFMap::( LHFMap f
                              , LHFMapKey f ~ k
                              , Align f
                              , Ord k
-                             , RD.DomBuilder t m
+                             , R.Adjustable t m
                              , MonadFix m
                              , R.MonadHold t m
-                             , RD.PostBuild t m)
+                             , R.PostBuild t m)
   =>R.Dynamic t k -> R.Dynamic t (f v) -> (k -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (k,a))
 selectViewListWithKeyLHFMap selection vals mkChild = selectViewListWithKeyGeneral selection (WrapMap <$> vals) mkChild
 

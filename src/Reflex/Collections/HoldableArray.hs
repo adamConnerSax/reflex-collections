@@ -32,7 +32,6 @@ import qualified Data.Dependent.Map      as DM
 import           Data.Functor.Misc       (ComposeMaybe (..), Const2 (..),
                                           dmapToMap, mapWithFunctorToDMap)
 import qualified Reflex                  as R
-import qualified Reflex.Dom              as RD
 import           Reflex.Patch            (PatchDMap (..))
 
 import qualified Data.Array              as A
@@ -99,7 +98,7 @@ instance A.Ix k => ToPatchType (HoldableArray k) k v a where
     in PatchDMap .  DM.fromList . fmap (\(k, mgv) -> Const2 k :=> ComposeMaybe mgv) . toList $ arrayDiffMapWithKey h had
   fromSeqType _ _ dm = if (DM.null dm) then EmptyHoldableArray else FullHoldableArray (dmapToArray dm)
 
-listHoldWithKeyHoldableArray :: forall t m k v a.(RD.DomBuilder t m, MonadFix m, R.MonadHold t m, A.Ix k)
+listHoldWithKeyHoldableArray :: forall t m k v a.(R.Adjustable t m, MonadFix m, R.MonadHold t m, A.Ix k)
   => HoldableArray k v -> R.Event t (HoldableArrayDiff k v) -> (k -> v -> m a) -> m (R.Dynamic t (HoldableArray k a))
 listHoldWithKeyHoldableArray = listHoldWithKeyGeneral
 

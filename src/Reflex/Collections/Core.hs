@@ -21,7 +21,6 @@ module Reflex.Collections.Core
   ) where
 
 import qualified Reflex                 as R
-import qualified Reflex.Dom             as RD
 
 import           Data.Dependent.Map     (DMap, GCompare)
 import           Data.Functor.Compose   (Compose (Compose, getCompose))
@@ -35,13 +34,13 @@ import           Control.Monad.Identity (Identity (..), void)
 import           Data.Proxy             (Proxy (..))
 
 -- This class carries the ability to sequence patches in the way of MonadAdjust And then turn the result into a Dynamic.
-class (R.Patch (pd k Identity)
-      , R.PatchTarget (pd k Identity) ~ d k Identity)=> Sequenceable (d :: (* -> *) -> (* -> *) -> *) (pd :: (* -> *) -> (* -> *) -> *)  (k :: * -> *) where
-  sequenceWithPatch::R.MonadAdjust t m=>d k m -> R.Event t (pd k m) -> m (d k Identity, R.Event t (pd k Identity))
-  patchPairToDynamic::(R.Reflex t, R.MonadHold t m)=>d k Identity -> R.Event t (pd k Identity) -> m (R.Dynamic t (d k Identity))
+class ( R.Patch (pd k Identity)
+      , R.PatchTarget (pd k Identity) ~ d k Identity) => Sequenceable (d :: (* -> *) -> (* -> *) -> *) (pd :: (* -> *) -> (* -> *) -> *)  (k :: * -> *) where
+  sequenceWithPatch :: R.Adjustable t m => d k m -> R.Event t (pd k m) -> m (d k Identity, R.Event t (pd k Identity))
+  patchPairToDynamic :: (R.Reflex t, R.MonadHold t m)=>d k Identity -> R.Event t (pd k Identity) -> m (R.Dynamic t (d k Identity))
 
 -- In particular, we can do sequencing for DMaps
-instance (GCompare (Const2 k a), Ord k)=>Sequenceable DMap PatchDMap (Const2 k a) where
+instance (GCompare (Const2 k a), Ord k) => Sequenceable DMap PatchDMap (Const2 k a) where
   sequenceWithPatch = R.sequenceDMapWithAdjust
   patchPairToDynamic a0 a' = R.incrementalToDynamic <$> R.holdIncremental a0 a'
 
@@ -59,7 +58,7 @@ class ToPatchType (f :: * -> *) k v a where
 
 -- Sequenceable and ToPatch are enough for listHoldWithKey
 -- NB: incrementalToDynamic applies the patch to the original so the Diff type here (or, really, whatever makePatchSeq turns it into, must be consistent).
-listHoldWithKeyGeneral::forall t m f k v a. (RD.DomBuilder t m, R.MonadHold t m
+listHoldWithKeyGeneral::forall t m f k v a. ( R.Adjustable t m, R.MonadHold t m
                                             , ToPatchType f k v a
                                             , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k a))
   =>f v -> R.Event t (Diff f k v) -> (k->v-> m a) -> m (R.Dynamic t (f a))
@@ -99,8 +98,8 @@ class Diffable (f :: * -> *) (df :: * -> *) where
 
 
 -- | Create a dynamically-changing set of Event-valued widgets.
-listWithKeyGeneral :: forall t m f k v a. (RD.DomBuilder t m
-                                          , RD.PostBuild t m
+listWithKeyGeneral :: forall t m f k v a. ( R.Adjustable t m
+                                          , R.PostBuild t m
                                           , MonadFix m
                                           , R.MonadHold t m
                                           , ToPatchType f k v a -- for the listHold
@@ -128,7 +127,7 @@ listWithKeyGeneral vals mkChild = do
 
 -- | Display the given map of items (in key order) using the builder function provided, and update it with the given event.
 -- | 'Nothing' update entries will delete the corresponding children, and 'Just' entries will create them if they do not exist or send an update event to them if they do.
-listWithKeyShallowDiffGeneral :: forall t m f k v a.(RD.DomBuilder t m
+listWithKeyShallowDiffGeneral :: forall t m f k v a.( R.Adjustable t m
                                                     , MonadFix m
                                                     , R.MonadHold t m
                                                     , ToPatchType f k v a -- for the listHold
@@ -154,10 +153,10 @@ class ToElemList (f :: * -> *) where
   toElemList::f v -> [v]
 
 -- | Create a dynamically-changing set of widgets, one of which is selected at any time.
-selectViewListWithKeyGeneral :: forall t m f k v a. (RD.DomBuilder t m
+selectViewListWithKeyGeneral :: forall t m f k v a. ( R.Adjustable t m
                                                     , MonadFix m
                                                     , R.MonadHold t m
-                                                    , RD.PostBuild t m
+                                                    , R.PostBuild t m
                                                     , ToElemList f
                                                     , ToPatchType f k v (R.Event t (k,a)) -- for the listHold
                                                     , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k (R.Event t (k,a))) -- for the listHold

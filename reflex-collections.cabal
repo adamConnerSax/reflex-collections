@@ -44,7 +44,6 @@ library
                      , dependent-map
                      , array
                      , reflex
-                     , reflex-dom
                      , lens
                      , mtl
                      , ref-tf
