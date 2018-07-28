@@ -31,7 +31,6 @@ import qualified Data.Dependent.Map      as DM
 import           Data.Functor.Misc       (ComposeMaybe (..), Const2 (..),
                                           dmapToMap, mapWithFunctorToDMap)
 import qualified Reflex                  as R
---import qualified Reflex.Dom              as RD
 import           Reflex.Patch            (PatchDMap (..))
 
 import           Data.Map                (Map)
@@ -51,37 +50,39 @@ import           Data.Align              (Align (..))
 import           Data.Maybe              (isNothing)
 import           Data.These              (These (..))
 
+-- | Class to encapsulate Map-like functionality and the ability to convert to a DMap
+-- This allows us to more easily use the polymorphic listHold functions with Map, HashMap and IntMap
 
-class (Functor f, Align f, Ord (LHFMapKey f))=>LHFMap (f :: * -> *) where
+class (Functor f, Align f, Ord (LHFMapKey f)) => LHFMap (f :: * -> *) where
   type LHFMapKey f :: *
-  lhfMapNull::f v -> Bool
-  lhfEmptyMap::f v
-  lhfMapSingleton::LHFMapKey f -> v -> f v
-  lhfMapElems::f v->[v]
-  lhfMapKeys::f v->[LHFMapKey f]
-  lhfMapWithKey::(LHFMapKey f -> v -> a) -> f v -> f a
-  lhfMapMaybe::(a -> Maybe b) -> f a -> f b
-  lhfMapFilter::(v -> Bool) -> f v -> f v
-  lhfMapUnion::f v -> f v -> f v
-  lhfMapIntersection::f v->f v->f v
-  lhfMapDifferenceWith::(a->b->Maybe a)->f a->f b->f a
-  lhfMapWithFunctorToDMap::Functor g=>f (g v) -> DM.DMap (Const2 (LHFMapKey f) v) g
-  lhfDMapToMap::DM.DMap (Const2 (LHFMapKey f) v) Identity -> f v
+  lhfMapNull :: f v -> Bool
+  lhfEmptyMap :: f v
+  lhfMapSingleton :: LHFMapKey f -> v -> f v
+  lhfMapElems :: f v->[v]
+  lhfMapKeys :: f v->[LHFMapKey f]
+  lhfMapWithKey :: (LHFMapKey f -> v -> a) -> f v -> f a
+  lhfMapMaybe :: (a -> Maybe b) -> f a -> f b
+  lhfMapFilter :: (v -> Bool) -> f v -> f v
+  lhfMapUnion :: f v -> f v -> f v
+  lhfMapIntersection :: f v->f v->f v
+  lhfMapDifferenceWith :: (a -> b -> Maybe a) -> f a -> f b -> f a
+  lhfMapWithFunctorToDMap :: Functor g => f (g v) -> DM.DMap (Const2 (LHFMapKey f) v) g
+  lhfDMapToMap :: DM.DMap (Const2 (LHFMapKey f) v) Identity -> f v
 
 
-lhfFanMap::(LHFMap f, Ord (LHFMapKey f), R.Reflex t) => R.Event t (f v) -> R.EventSelector t (Const2 (LHFMapKey f) v)
+lhfFanMap :: (LHFMap f, Ord (LHFMapKey f), R.Reflex t) => R.Event t (f v) -> R.EventSelector t (Const2 (LHFMapKey f) v)
 lhfFanMap = R.fan . fmap lhfMapToDMap
 
-lhfMapToDMap::LHFMap f=>f v -> DMap (Const2 (LHFMapKey f) v) Identity
+lhfMapToDMap :: LHFMap f => f v -> DMap (Const2 (LHFMapKey f) v) Identity
 lhfMapToDMap = lhfMapWithFunctorToDMap . fmap Identity
 
-distributeLHFMapOverDynPure::(LHFMap f,R.Reflex t,Ord (LHFMapKey f))=>f (R.Dynamic t v) -> R.Dynamic t (f v)
+distributeLHFMapOverDynPure :: (LHFMap f,R.Reflex t,Ord (LHFMapKey f))=>f (R.Dynamic t v) -> R.Dynamic t (f v)
 distributeLHFMapOverDynPure = fmap lhfDMapToMap . R.distributeDMapOverDynPure . lhfMapWithFunctorToDMap
 
+-- | Wrapper so that map instances won't be too general
+newtype WrapMap f v = WrapMap { unWrapMap :: f v } deriving (Functor)
 
-newtype WrapMap f v = WrapMap { unWrapMap::f v } deriving (Functor) -- newtype to allow instancing specifically for maps
-
-instance LHFMap f=>LHFMap (WrapMap f) where
+instance LHFMap f => LHFMap (WrapMap f) where
   type LHFMapKey (WrapMap f) = LHFMapKey f
   lhfMapNull = lhfMapNull . unWrapMap
   lhfEmptyMap = WrapMap lhfEmptyMap
@@ -103,11 +104,11 @@ instance Align f => Align (WrapMap f) where
 
 newtype WrapA a = WrapA { unWrapA::a }  -- also to avoid overlapping instances
 
-fromWrapA::Functor g=>(k -> v -> g (WrapA a))->(k->v->g a)
+fromWrapA :: Functor g => (k -> v -> g (WrapA a)) -> (k -> v -> g a)
 fromWrapA f x y = unWrapA <$> f x y
 
 
-instance (LHFMap (WrapMap f), LHFMapKey (WrapMap f) ~ k)=>ToPatchType (WrapMap f) k v (WrapA a) where
+instance (LHFMap (WrapMap f), LHFMapKey (WrapMap f) ~ k) => ToPatchType (WrapMap f) k v (WrapA a) where
   type Diff (WrapMap f) k = Compose (WrapMap f) Maybe
   type SeqType (WrapMap f) k = DM.DMap
   type SeqPatchType (WrapMap f) k = PatchDMap
@@ -116,7 +117,7 @@ instance (LHFMap (WrapMap f), LHFMapKey (WrapMap f) ~ k)=>ToPatchType (WrapMap f
   makePatchSeq _ h = PatchDMap . lhfMapWithFunctorToDMap . lhfMapWithKey (\k mv -> ComposeMaybe $ fmap (fromWrapA h k) mv) . getCompose
   fromSeqType _ _ = fmap WrapA . lhfDMapToMap
 
-instance (LHFMap (WrapMap f), Align (WrapMap f), Functor (WrapMap f))=>Diffable (WrapMap f) (Compose (WrapMap f) Maybe) where
+instance (LHFMap (WrapMap f), Align (WrapMap f), Functor (WrapMap f)) => Diffable (WrapMap f) (Compose (WrapMap f) Maybe) where
   emptyContainer _ = lhfEmptyMap
   toDiff = Compose . fmap Just
   diffNoEq old new = Compose $ flip fmap (align old new) $ \case
@@ -145,64 +146,63 @@ instance (LHFMap (WrapMap f), Align (WrapMap f), Functor (WrapMap f))=>Diffable 
     in Compose $ lhfMapDifferenceWith relevantPatch (getCompose da) (getCompose db)
 
 
-lhfMapDiffNoEq::Diffable (WrapMap f) (Compose (WrapMap f) Maybe)=>f v -> f v -> f (Maybe v)
+lhfMapDiffNoEq :: Diffable (WrapMap f) (Compose (WrapMap f) Maybe) => f v -> f v -> f (Maybe v)
 lhfMapDiffNoEq old new = unWrapMap . getCompose $ diffNoEq (WrapMap old) (WrapMap new)
 
-lhfMapDiff::(Diffable (WrapMap f) (Compose (WrapMap f) Maybe), Eq v)=>f v -> f v -> f (Maybe v)
+lhfMapDiff :: (Diffable (WrapMap f) (Compose (WrapMap f) Maybe), Eq v) => f v -> f v -> f (Maybe v)
 lhfMapDiff old new = unWrapMap . getCompose $ diff (WrapMap old) (WrapMap new)
 
-lhfMapApplyDiff::Diffable (WrapMap f) (Compose (WrapMap f) Maybe)=>f (Maybe v) -> f v -> f v
+lhfMapApplyDiff :: Diffable (WrapMap f) (Compose (WrapMap f) Maybe) => f (Maybe v) -> f v -> f v
 lhfMapApplyDiff d a = unWrapMap $ applyDiff (Compose $ WrapMap d) (WrapMap a)
 
 
-instance (LHFMap (WrapMap f), Ord (LHFMapKey (WrapMap f)))=>HasFan (WrapMap f) v where
+instance (LHFMap (WrapMap f), Ord (LHFMapKey (WrapMap f))) => HasFan (WrapMap f) v where
   type FanInKey (WrapMap f) = LHFMapKey (WrapMap f)
   type FanSelKey (WrapMap f) v = Const2 (LHFMapKey (WrapMap f)) v
   doFan _ = lhfFanMap --R.fanMap . unLHMap {- . fmap (Map.mapMaybe id) . fmap getCompose -}
   makeSelKey _ _ = Const2
 
 
-instance (LHFMap (WrapMap f), Ord (LHFMapKey (WrapMap f)))=>HasFan (Compose (WrapMap f) Maybe) v where
+instance (LHFMap (WrapMap f), Ord (LHFMapKey (WrapMap f))) => HasFan (Compose (WrapMap f) Maybe) v where
   type FanInKey (Compose (WrapMap f) Maybe) = LHFMapKey (WrapMap f)
   type FanSelKey (Compose (WrapMap f) Maybe) v = Const2 (LHFMapKey (WrapMap f)) v
   doFan _ = lhfFanMap . fmap (lhfMapMaybe id) . fmap getCompose
   makeSelKey _ _ = Const2
 
-toWrapA::Functor g=>(k -> v -> g a) -> (k -> v -> g (WrapA a))
+toWrapA :: Functor g => (k -> v -> g a) -> (k -> v -> g (WrapA a))
 toWrapA f x y = WrapA <$> f x y
 
 
-listHoldWithKeyLHFMap::forall f t m k v a. ( LHFMap f
-                                           , LHFMapKey f ~ k
-                                           , Ord k
-                                           , R.Adjustable t m
-                                           , R.MonadHold t m)
-  =>f v->R.Event t (f (Maybe v))->(k->v->m a)->m (R.Dynamic t (f a))
+listHoldWithKeyLHFMap :: forall f t m k v a. ( LHFMap f
+                                             , LHFMapKey f ~ k
+                                             , Ord k
+                                             , R.Adjustable t m
+                                             , R.MonadHold t m)
+  => f v -> R.Event t (f (Maybe v)) -> (k -> v -> m a) -> m (R.Dynamic t (f a))
 listHoldWithKeyLHFMap c diffCEv h = fmap (fmap unWrapA . unWrapMap) <$> listHoldWithKeyGeneral (WrapMap c) (Compose . WrapMap <$> diffCEv) (toWrapA h)
 
-toWrapA3::Functor g=>(k -> v -> e -> g a) -> (k -> v -> e -> g (WrapA a))
+toWrapA3 :: Functor g => (k -> v -> e -> g a) -> (k -> v -> e -> g (WrapA a))
 toWrapA3 f x y z = WrapA <$> f x y z
 
-
-listWithKeyShallowDiffLHFMap::forall f t m k v a. ( LHFMap f
-                                                  , LHFMapKey f ~ k
-                                                  , Align f
-                                                  , Ord k
-                                                  , R.Adjustable t m
-                                                  , MonadFix m
-                                                  , R.MonadHold t m)
+listWithKeyShallowDiffLHFMap :: forall f t m k v a. ( LHFMap f
+                                                    , LHFMapKey f ~ k
+                                                    , Align f
+                                                    , Ord k
+                                                    , R.Adjustable t m
+                                                    , MonadFix m
+                                                    , R.MonadHold t m)
   => f v -> R.Event t (f (Maybe v)) -> (k -> v -> R.Event t v -> m a) -> m (R.Dynamic t (f a))
 listWithKeyShallowDiffLHFMap c diffCEv  h = fmap (fmap unWrapA . unWrapMap) <$> listWithKeyShallowDiffGeneral (WrapMap c) (Compose . WrapMap <$> diffCEv) (toWrapA3 h)
 
-listWithKeyLHFMap::forall f t m k v a. ( LHFMap f
-                                       , LHFMapKey f ~ k
-                                       , Align f
-                                       , Ord k
-                                       , R.Adjustable t m
-                                       , MonadFix m
-                                       , R.MonadHold t m
-                                       , R.PostBuild t m)
-  =>R.Dynamic t (f v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
+listWithKeyLHFMap :: forall f t m k v a. ( LHFMap f
+                                         , LHFMapKey f ~ k
+                                         , Align f
+                                         , Ord k
+                                         , R.Adjustable t m
+                                         , MonadFix m
+                                         , R.MonadHold t m
+                                         , R.PostBuild t m)
+  => R.Dynamic t (f v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
 listWithKeyLHFMap dc h = fmap (fmap unWrapA . unWrapMap) <$> listWithKeyGeneral (WrapMap <$> dc) (toWrapA h)
 
 
@@ -215,7 +215,7 @@ instance (LHFMap (WrapMap f), LHFMapKey (WrapMap f) ~ k) => ToPatchType (WrapMap
   makePatchSeq _ h = PatchDMap . lhfMapWithFunctorToDMap . lhfMapWithKey (\k mv -> ComposeMaybe $ fmap (h k) mv) . getCompose
   fromSeqType _ _ = lhfDMapToMap
 
-instance LHFMap f=>ToElemList (WrapMap f) where
+instance LHFMap f => ToElemList (WrapMap f) where
   toElemList = lhfMapElems . unWrapMap
 
 
@@ -227,12 +227,12 @@ selectViewListWithKeyLHFMap::( LHFMap f
                              , MonadFix m
                              , R.MonadHold t m
                              , R.PostBuild t m)
-  =>R.Dynamic t k -> R.Dynamic t (f v) -> (k -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (k,a))
+  => R.Dynamic t k -> R.Dynamic t (f v) -> (k -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (k,a))
 selectViewListWithKeyLHFMap selection vals mkChild = selectViewListWithKeyGeneral selection (WrapMap <$> vals) mkChild
 
 
 -- These Maplike things are the easy cases and all useful for listWithKeyShallowDiff based container widgets
-instance Ord k=>LHFMap (Map k) where
+instance Ord k => LHFMap (Map k) where
   type LHFMapKey (Map k) = k
   lhfMapNull = Map.null
   lhfEmptyMap = Map.empty
@@ -265,7 +265,7 @@ instance LHFMap IntMap where
   lhfDMapToMap = IM.fromDistinctAscList . fmap (\(Const2 k :=> Identity v) -> (k, v)) . DM.toAscList
 
 
-instance (Ord k, Hashable k)=>LHFMap (HashMap k) where
+instance (Ord k, Hashable k) => LHFMap (HashMap k) where
   type LHFMapKey (HashMap k) = k
   lhfMapNull = HM.null
   lhfEmptyMap = HM.empty

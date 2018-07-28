@@ -1,5 +1,7 @@
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE InstanceSigs          #-}
 {-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -7,6 +9,9 @@
 {-# LANGUAGE RecursiveDo           #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
+#ifdef USE_REFLEX_OPTIMIZER
+{-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
+#endif
 module Reflex.Collections.Core
   (
     Sequenceable(..)
@@ -33,20 +38,34 @@ import           Control.Monad.Identity (Identity (..), void)
 
 import           Data.Proxy             (Proxy (..))
 
--- This class carries the ability to sequence patches in the way of MonadAdjust And then turn the result into a Dynamic.
+-- | This class carries the ability to sequence patches in the way of MonadAdjust And then turn the result into a Dynamic.
+-- sequenceWithPatch takes a static d containing adjustable (m a), e.g., widgets, and event carrying patches, that is
+-- new widgets for some keys k, and "pulls out" (sequences) the m.
+-- patchPairToDynamic is a sort of inverse, turning a static d containing values and events with patches to it, new values at some keys,
+-- and returns an adjustable monad containing a Dynamic of a value containing d.
+-- |
 class ( R.Patch (pd k Identity)
       , R.PatchTarget (pd k Identity) ~ d k Identity) => Sequenceable (d :: (* -> *) -> (* -> *) -> *) (pd :: (* -> *) -> (* -> *) -> *)  (k :: * -> *) where
   sequenceWithPatch :: R.Adjustable t m => d k m -> R.Event t (pd k m) -> m (d k Identity, R.Event t (pd k Identity))
-  patchPairToDynamic :: (R.Reflex t, R.MonadHold t m)=>d k Identity -> R.Event t (pd k Identity) -> m (R.Dynamic t (d k Identity))
+  patchPairToDynamic :: (R.MonadHold t m, R.Reflex t) =>d k Identity -> R.Event t (pd k Identity) -> m (R.Dynamic t (d k Identity))
 
--- In particular, we can do sequencing for DMaps
+-- | DMaps are our prime example of something sequenceable
 instance (GCompare (Const2 k a), Ord k) => Sequenceable DMap PatchDMap (Const2 k a) where
+  sequenceWithPatch :: R.Adjustable t m
+                    => DMap (Const2 k a) m
+                    -> R.Event t (PatchDMap (Const2 k a) m)
+                    -> m (DMap (Const2 k a) Identity, R.Event t (PatchDMap (Const2 k a) Identity))
   sequenceWithPatch = R.sequenceDMapWithAdjust
+
+  patchPairToDynamic :: (R.MonadHold t m, R.Reflex t)
+                     => DMap (Const2 k a) Identity
+                     -> R.Event t (PatchDMap (Const2 k a) Identity)
+                     -> m (R.Dynamic t (DMap (Const2 k a) Identity))
   patchPairToDynamic a0 a' = R.incrementalToDynamic <$> R.holdIncremental a0 a'
 
 
 -- This class has the capabilities to translate f v and its difftype into types that are sequenceable, and then bring the original type back
--- This requires that the Diff type be mapped to the correct type for diffing at the sequencable level (e.g., as a DMap).
+-- This requires that the Diff type be mapped to the correct type for diffing at the sequenceable level (e.g., as a DMap).
 class ToPatchType (f :: * -> *) k v a where
   type Diff f k :: * -> *
   type SeqType  f k :: (* -> *) -> (* -> *) -> *
@@ -56,7 +75,10 @@ class ToPatchType (f :: * -> *) k v a where
   makePatchSeq :: Functor g => Proxy f -> (k -> v -> g a) -> Diff f k v -> SeqPatchType f k (SeqTypeKey f k a) g
   fromSeqType :: Proxy k -> Proxy v -> SeqType f k (SeqTypeKey f k a) Identity -> f a
 
--- Sequenceable and ToPatch are enough for listHoldWithKey
+-- | Sequenceable and ToPatch are enough for listHoldWithKey
+-- listHoldWithKey is an efficient collection management function if your input is a static initial state and events of updates.
+-- If your input is a Dynamic structure than you need the ability to take Diffs and to bootstrap a starting point from the dynamic input.
+-- That 2nd point would be simpler if you could sample.
 -- NB: incrementalToDynamic applies the patch to the original so the Diff type here (or, really, whatever makePatchSeq turns it into, must be consistent).
 listHoldWithKeyGeneral::forall t m f k v a. ( R.Adjustable t m, R.MonadHold t m
                                             , ToPatchType f k v a
@@ -74,14 +96,17 @@ listHoldWithKeyGeneral c0 c' h = do
   fmap fromSeqType' <$> patchPairToDynamic a0 a'
 
 -- for the listWithKey and listWithKeyShallow diff we need to be able to fan events and the ability to take and apply diffs on the original container
+-- We also need to be able to produce an empty container to bootstrap the initial value.  Couldn't we sample?
 
 -- This class encapsuates the types and functionality required to use "fan"
 class HasFan (a :: * -> *) v where
   type FanInKey a :: *
   type FanSelKey a v :: * -> *
-  makeSelKey::Proxy a->Proxy v->FanInKey a->FanSelKey a v v
-  doFan::R.Reflex t=>Proxy v->R.Event t (a v) -> R.EventSelector t (FanSelKey a v)
+  makeSelKey :: Proxy a -> Proxy v -> FanInKey a -> FanSelKey a v v
+  doFan :: R.Reflex t => Proxy v -> R.Event t (a v) -> R.EventSelector t (FanSelKey a v)
 
+-- separate HasEmpty class?
+--class Has
 
 -- encapsulates the ability to diff two containers and then apply the diff to regain the original
 -- also supports a Map.difference style operation on the diff itself (for splitting out value updates)

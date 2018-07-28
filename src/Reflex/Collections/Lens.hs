@@ -8,7 +8,6 @@
 module Reflex.Collections.Lens where
 
 import qualified Reflex as R
-import qualified Reflex.Dom as RD
 
 import Control.Lens
 import Control.Lens.At
