@@ -83,7 +83,7 @@ class ToPatchType (f :: * -> *) k v a where
 listHoldWithKeyGeneral::forall t m f k v a. ( R.Adjustable t m, R.MonadHold t m
                                             , ToPatchType f k v a
                                             , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k a))
-  =>f v -> R.Event t (Diff f k v) -> (k->v-> m a) -> m (R.Dynamic t (f a))
+  => f v -> R.Event t (Diff f k v) -> (k->v-> m a) -> m (R.Dynamic t (f a))
 listHoldWithKeyGeneral c0 c' h = do
   let pf = Proxy :: Proxy f
       pk = Proxy :: Proxy k
@@ -99,14 +99,29 @@ listHoldWithKeyGeneral c0 c' h = do
 -- We also need to be able to produce an empty container to bootstrap the initial value.  Couldn't we sample?
 
 -- This class encapsuates the types and functionality required to use "fan"
-class HasFan (a :: * -> *) v where
-  type FanInKey a :: *
-  type FanSelKey a v :: * -> *
-  makeSelKey :: Proxy a -> Proxy v -> FanInKey a -> FanSelKey a v v
-  doFan :: R.Reflex t => Proxy v -> R.Event t (a v) -> R.EventSelector t (FanSelKey a v)
+class HasFan (f :: * -> *) v where
+  type FanInKey f :: *
+  type FanSelKey f v :: * -> *
+  makeSelKey :: Proxy f -> Proxy v -> FanInKey f -> FanSelKey f v v
+  doFan :: R.Reflex t => Proxy v -> R.Event t (f v) -> R.EventSelector t (FanSelKey f v)
 
--- separate HasEmpty class?
---class Has
+
+listWithKeyGeneral' :: forall t m f k v a. ( R.Adjustable t m
+                                           , R.PostBuild t m
+                                           , R.MonadHold t m
+                                           , ToPatchType f k v a
+                                           , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k a)
+                                           , HasFan f v
+                                           , FanInKey f ~ k)
+                    => (R.Dynamic t (f v) -> m (f v, R.Event t (Diff f k v)))
+                    -> R.Dynamic t (f v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
+listWithKeyGeneral' toInitialPlusKeyDiffEvent vals mkChild = do
+  let doFan' = doFan (Proxy :: Proxy v)
+      makeSelKey' = makeSelKey (Proxy :: Proxy f) (Proxy :: Proxy v)
+      childValChangedSelector = doFan' $ R.updated vals
+  (fv0, edfv) <- toInitialPlusKeyDiffEvent vals
+  listHoldWithKeyGeneral fv0 edfv $ \k v ->
+    mkChild k =<< R.holdDyn v (R.select childValChangedSelector $ makeSelKey' k)
 
 -- encapsulates the ability to diff two containers and then apply the diff to regain the original
 -- also supports a Map.difference style operation on the diff itself (for splitting out value updates)
@@ -121,6 +136,36 @@ class Diffable (f :: * -> *) (df :: * -> *) where
   diffOnlyKeyChanges :: f v -> f v -> df v
   editDiffLeavingDeletes :: Proxy f -> df v -> df k -> df v -- this removes 2nd diff from first, except when first indicates a delete. May not generalize.
 
+diffableDynamicToInitialPlusKeyDiffEvent :: forall t m f df v. ( Diffable f df
+                                                               , R.PostBuild t m
+                                                               , MonadFix m
+                                                               , R.MonadHold t m)
+  => R.Dynamic t (f v)
+  -> m (f v, R.Event t (df v))
+diffableDynamicToInitialPlusKeyDiffEvent vals = mdo
+  postBuild <- R.getPostBuild
+  let emptyContainer' :: f v = emptyContainer (Proxy :: Proxy df)
+  sentVals :: R.Dynamic t (f v) <- R.foldDyn applyDiff emptyContainer' changeVals
+  let changeVals :: R.Event t (df v)
+      changeVals = R.attachWith diffOnlyKeyChanges (R.current sentVals) $ R.leftmost
+                   [ R.updated vals
+                   , R.tag (R.current vals) postBuild
+                   ] --TODO: This should probably be added to the attachWith, not to the updated; if we were using diffMap instead of diffMapNoEq, I think it might not work
+  return $ (emptyContainer', changeVals)
+
+
+listWithKeyDiffable :: forall t m f k v a. ( R.Adjustable t m
+                                           , R.PostBuild t m
+                                           , MonadFix m
+                                           , R.MonadHold t m
+                                           , ToPatchType f k v a -- for the listHold
+                                           , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k a) -- for the listHold
+                                           , Diffable f (Diff f k)
+                                           , Functor (Diff f k)
+                                           , HasFan f v
+                                           , FanInKey f ~ k)
+  => R.Dynamic t (f v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
+listWithKeyDiffable vals mkChild = listWithKeyGeneral' diffableDynamicToInitialPlusKeyDiffEvent vals mkChild
 
 -- | Create a dynamically-changing set of Event-valued widgets.
 listWithKeyGeneral :: forall t m f k v a. ( R.Adjustable t m
