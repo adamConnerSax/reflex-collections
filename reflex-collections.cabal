@@ -59,6 +59,33 @@ library
   ghc-prof-options: -fprof-auto
   ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2       
 
+
+executable test
+  if flag(wkwebview)
+    buildable: False
+  hs-source-dirs:      app
+  main-is:             Main.hs
+  ghc-options:         -threaded -Wall -fwarn-tabs -funbox-strict-fields -rtsopts -with-rtsopts=-N -O2
+  if flag(warp)
+   cpp-options: -DUSE_WARP -DUSE_JSADDLE
+   build-depends: jsaddle-warp
+  if flag(ghcjs)
+   cpp-options: -DUSE_GHCJS 
+                , cabal-macosx >= 0.2.3.4 && < 0.3
+  build-depends:       base
+                     , reflex
+                     , reflex-collections
+                     , ref-tf
+                     , reflex-dom
+                     , ghcjs-dom
+                     , containers
+                     , text
+                     , process
+                     , safe
+  default-language:    Haskell2010
+
+
+  
 source-repository head
   type:     git
   location: https://github.com/adamConnerSax/reflex-collections
