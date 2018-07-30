@@ -18,6 +18,7 @@ module Reflex.Collections.Core
   , ToPatchType(..)
   , listHoldWithKeyGeneral
   , HasFan(..)
+  , HasEmpty(..)
   , Diffable(..)
   , listWithKeyGeneral
   , listWithKeyShallowDiffGeneral
@@ -41,7 +42,7 @@ import           Data.Proxy             (Proxy (..))
 
 -- | This class carries the ability to do an efficient event merge
 -- "Merge a collection of events.  The resulting event will occur if at least one input event is occuring
--- and will contain all simultaneously occurring events
+-- and will contain all simultaneously occurring events."
 class Mergeable (dk :: (* -> *) -> *) where
   mergeEvents :: R.Reflex t => dk (R.Event t) -> R.Event t (dk Identity)
 
@@ -85,23 +86,26 @@ class ToPatchType (f :: * -> *) k v a where
   makePatchSeq :: Functor g => Proxy f -> (k -> v -> g a) -> Diff f k v -> SeqPatchType f k (SeqTypeKey f k a) g
   fromSeqType :: Proxy k -> Proxy v -> SeqType f k (SeqTypeKey f k a) Identity -> f a
 
-{-
-mergeOverWithKey :: ( ToPatchType f k v v
-             , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k v)
-             , Mergeable ((SeqType f k) (SeqTypeKey f k v)))
-  => (k -> v -> R.Event t v) -> f (R.Event t v) -> R.Event t (f v)
-mergeOverWithKey g = fmap (fromSeqType (Proxy :: Proxy k) (Proxy :: Proxy (R.Event t v))) . R.merge . toSeqTypeWithFunctor g
--}
+-- | Generalizes "mergeMap" to anything with ToPatchType where the Patches are Sequenceable.
+mergeOver :: forall t f k v. ( R.Reflex t
+                             , ToPatchType f k (R.Event t v) v
+                             , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k v)
+                             , Mergeable ((SeqType f k) (SeqTypeKey f k v)))
+  => Proxy k -> f (R.Event t v) -> R.Event t (f v)
+mergeOver pk fEv =
+  let id2 = const id :: (k -> R.Event t v -> R.Event t v)
+  in fmap (fromSeqType pk (Proxy :: Proxy (R.Event t v))) . mergeEvents $ toSeqTypeWithFunctor id2 fEv
 
 
 -- | Sequenceable and ToPatch are enough for listHoldWithKey
 -- listHoldWithKey is an efficient collection management function if your input is a static initial state and events of updates.
 -- If your input is a Dynamic structure than you need the ability to take Diffs and to bootstrap a starting point from the dynamic input.
 -- That 2nd point would be simpler if you could sample.
--- NB: incrementalToDynamic applies the patch to the original so the Diff type here (or, really, whatever makePatchSeq turns it into, must be consistent).
-listHoldWithKeyGeneral::forall t m f k v a. ( R.Adjustable t m, R.MonadHold t m
-                                            , ToPatchType f k v a
-                                            , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k a))
+-- NB: incrementalToDynamic applies the patch to the original so the Diff type here
+-- (or, really, whatever makePatchSeq turns it into), must be consistent.
+listHoldWithKeyGeneral :: forall t m f k v a. ( R.Adjustable t m, R.MonadHold t m
+                                              , ToPatchType f k v a
+                                              , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k a))
   => f v -> R.Event t (Diff f k v) -> (k->v-> m a) -> m (R.Dynamic t (f a))
 listHoldWithKeyGeneral c0 c' h = do
   let pf = Proxy :: Proxy f
@@ -142,42 +146,55 @@ listWithKeyGeneral' toInitialPlusKeyDiffEvent vals mkChild = do
   listHoldWithKeyGeneral fv0 edfv $ \k v ->
     mkChild k =<< R.holdDyn v (R.select childValChangedSelector $ makeSelKey' k)
 
-{-
+
+
+-- | Generalizes "listViewWithKey" which is a special case of listWithKey for Events.  The extra constraints are needed because
+-- this uses all the machinery of sequencing (DMaps) twice: once for the inner listWithKey and then again for the merging of events.
 listViewWithKeyGeneral' ::  forall t m f k v a. ( R.Adjustable t m
                                                 , R.PostBuild t m
                                                 , R.MonadHold t m
-                                                , ToPatchType f k v a
+                                                , ToPatchType f k v (R.Event t a)
+                                                , ToPatchType f k (R.Event t a) a
+                                                , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k (R.Event t a))
                                                 , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k a)
+                                                , Mergeable ((SeqType f k) (SeqTypeKey f k a))
                                                 , HasFan f v
                                                 , FanInKey f ~ k)
   => (R.Dynamic t (f v) -> m (f v, R.Event t (Diff f k v)))
   -> R.Dynamic t (f v) -> (k -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (f a))
-listViewWithKeyGeneral' val mkChild = R.switch . fmap merge?? <$> listViewWithKeyGeneral' vals mkChild
--}
+listViewWithKeyGeneral' toEv vals mkChild = R.switch . R.current . fmap (mergeOver (Proxy :: Proxy k)) <$> listWithKeyGeneral' toEv vals mkChild
+
+
+-- | Not all containers have a zero state.
+-- Maps and lists do, but a total map doesn't unless the element type does
+class HasEmpty a where
+  empty :: a
 
 -- encapsulates the ability to diff two containers and then apply the diff to regain the original
 -- also supports a Map.difference style operation on the diff itself (for splitting out value updates)
 -- diffOnlyKeyChanges and editDiffLeavingDeletes are both too specific, I think.
 -- NB: applyDiffD (diffD x y) y = x
 class Diffable (f :: * -> *) (df :: * -> *) where
-  emptyContainer :: Proxy df -> f v
-  toDiff :: f v -> df v -- this can always be done via toDiff = flip diff emptyContainer
   diffNoEq :: f v -> f v -> df v
   diff :: Eq v => f v -> f v -> df v
   applyDiff :: df v -> f v -> f v
   diffOnlyKeyChanges :: f v -> f v -> df v
   editDiffLeavingDeletes :: Proxy f -> df v -> df k -> df v -- this removes 2nd diff from first, except when first indicates a delete. May not generalize.
 
+toDiff :: (HasEmpty (f v), Diffable f df) => f v -> df v
+toDiff = flip diffNoEq empty
 
-diffableDynamicToInitialPlusKeyDiffEvent :: forall t m f df v. ( Diffable f df
-                                                               , R.PostBuild t m
-                                                               , MonadFix m
-                                                               , R.MonadHold t m)
+
+hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent :: forall t m f df v. ( Diffable f df
+                                                                       , HasEmpty (f v)
+                                                                       , R.PostBuild t m
+                                                                       , MonadFix m
+                                                                       , R.MonadHold t m)
   => R.Dynamic t (f v)
   -> m (f v, R.Event t (df v))
-diffableDynamicToInitialPlusKeyDiffEvent vals = mdo
+hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent vals = mdo
   postBuild <- R.getPostBuild
-  let emptyContainer' :: f v = emptyContainer (Proxy :: Proxy df)
+  let emptyContainer' = empty
   sentVals :: R.Dynamic t (f v) <- R.foldDyn applyDiff emptyContainer' changeVals
   let changeVals :: R.Event t (df v)
       changeVals = R.attachWith diffOnlyKeyChanges (R.current sentVals) $ R.leftmost
@@ -187,21 +204,40 @@ diffableDynamicToInitialPlusKeyDiffEvent vals = mdo
   return $ (emptyContainer', changeVals)
 
 
-listWithKeyDiffable :: forall t m f k v a. ( R.Adjustable t m
+
+hasEmptyListWithKey :: forall t m f k v a. ( R.Adjustable t m
                                            , R.PostBuild t m
                                            , MonadFix m
                                            , R.MonadHold t m
                                            , ToPatchType f k v a -- for the listHold
                                            , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k a) -- for the listHold
                                            , Diffable f (Diff f k)
+                                           , HasEmpty (f v)
                                            , Functor (Diff f k)
                                            , HasFan f v
                                            , FanInKey f ~ k)
   => R.Dynamic t (f v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
-listWithKeyDiffable vals mkChild = listWithKeyGeneral' diffableDynamicToInitialPlusKeyDiffEvent vals mkChild
+hasEmptyListWithKey vals mkChild = listWithKeyGeneral' hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent vals mkChild
 
--- | Create a dynamically-changing set of Event-valued widgets.
-listWithKeyGeneral :: forall t m f k v a. ( R.Adjustable t m
+
+{-
+-- These don't work because, I assume, of sample.
+sampledDiffableDynamicToInitialPlusKeyDiffEvent :: forall t m f df v. ( R.Reflex t
+                                                                      , Diffable f df
+                                                                      , MonadFix m
+                                                                      , R.MonadHold t m)
+  => R.Dynamic t (f v)
+  -> m (f v, R.Event t (df v))
+sampledDiffableDynamicToInitialPlusKeyDiffEvent vals = mdo
+  v0 <- R.sample . R.current $ vals
+  sentVals :: R.Dynamic t (f v) <- R.foldDyn applyDiff v0 changeVals
+  let changeVals :: R.Event t (df v)
+      changeVals = R.attachWith diffOnlyKeyChanges (R.current sentVals) $ R.updated vals
+  return $ (v0, changeVals)
+
+
+
+sampledListWithKey :: forall t m f k v a. ( R.Adjustable t m
                                           , R.PostBuild t m
                                           , MonadFix m
                                           , R.MonadHold t m
@@ -212,7 +248,25 @@ listWithKeyGeneral :: forall t m f k v a. ( R.Adjustable t m
                                           , HasFan f v
                                           , FanInKey f ~ k)
   => R.Dynamic t (f v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
-listWithKeyGeneral = listWithKeyDiffable
+sampledListWithKey vals mkChild = listWithKeyGeneral' sampledDiffableDynamicToInitialPlusKeyDiffEvent vals mkChild
+-}
+
+
+
+-- | Create a dynamically-changing set of Event-valued widgets.
+listWithKeyGeneral :: forall t m f k v a. ( R.Adjustable t m
+                                          , R.PostBuild t m
+                                          , MonadFix m
+                                          , R.MonadHold t m
+                                          , ToPatchType f k v a -- for the listHold
+                                          , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k a) -- for the listHold
+                                          , Diffable f (Diff f k)
+                                          , HasEmpty (f v)
+                                          , Functor (Diff f k)
+                                          , HasFan f v
+                                          , FanInKey f ~ k)
+  => R.Dynamic t (f v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
+listWithKeyGeneral = hasEmptyListWithKey
 
 -- | Display the given map of items (in key order) using the builder function provided, and update it with the given event.
 -- | 'Nothing' update entries will delete the corresponding children, and 'Just' entries will create them if they do not exist or send an update event to them if they do.
@@ -222,6 +276,7 @@ listWithKeyShallowDiffGeneral :: forall t m f k v a.( R.Adjustable t m
                                                     , ToPatchType f k v a -- for the listHold
                                                     , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k a) -- for the listHold
                                                     , Diffable f (Diff f k)
+                                                    , HasEmpty (f ())
                                                     , Functor (Diff f k)
                                                     , HasFan (Diff f k) v
                                                     , FanInKey (Diff f k) ~ k)
@@ -229,8 +284,8 @@ listWithKeyShallowDiffGeneral :: forall t m f k v a.( R.Adjustable t m
 listWithKeyShallowDiffGeneral initialVals valsChanged mkChild = do
   let makeSelKey' = makeSelKey (Proxy :: Proxy (Diff f k)) (Proxy :: Proxy v)
       doFan' = doFan (Proxy :: Proxy v)
-      emptyContainer'::f ()
-      emptyContainer' = emptyContainer (Proxy :: Proxy (Diff f k))
+      emptyContainer' :: f ()
+      emptyContainer' = empty
       editDiffLeavingDeletes' = editDiffLeavingDeletes (Proxy :: Proxy f)
       childValChangedSelector = doFan' valsChanged
   sentVals <- R.foldDyn applyDiff emptyContainer' $ fmap void valsChanged
@@ -250,6 +305,7 @@ selectViewListWithKeyGeneral :: forall t m f k v a. ( R.Adjustable t m
                                                     , ToPatchType f k v (R.Event t (k,a)) -- for the listHold
                                                     , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k (R.Event t (k,a))) -- for the listHold
                                                     , Diffable f (Diff f k) -- for the listWithKeyGeneral
+                                                    , HasEmpty (f v)
                                                     , Functor (Diff f k)
                                                     , HasFan f v
                                                     , FanInKey f ~ k

@@ -117,9 +117,12 @@ instance (LHFMap (WrapMap f), LHFMapKey (WrapMap f) ~ k) => ToPatchType (WrapMap
   makePatchSeq _ h = PatchDMap . lhfMapWithFunctorToDMap . lhfMapWithKey (\k mv -> ComposeMaybe $ fmap (fromWrapA h k) mv) . getCompose
   fromSeqType _ _ = fmap WrapA . lhfDMapToMap
 
+instance LHFMap (WrapMap f) => HasEmpty ((WrapMap f) a) where
+  empty = lhfEmptyMap
+
 instance (LHFMap (WrapMap f), Align (WrapMap f), Functor (WrapMap f)) => Diffable (WrapMap f) (Compose (WrapMap f) Maybe) where
-  emptyContainer _ = lhfEmptyMap
-  toDiff = Compose . fmap Just
+--  emptyContainer _ = lhfEmptyMap
+--  toDiff = Compose . fmap Just
   diffNoEq old new = Compose $ flip fmap (align old new) $ \case
     This _ -> Nothing -- in old but not new, so delete
     That v -> Just v -- in new but not old, so put in patch
