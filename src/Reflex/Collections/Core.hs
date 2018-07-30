@@ -42,10 +42,10 @@ import           Data.Proxy             (Proxy (..))
 -- | This class carries the ability to do an efficient event merge
 -- "Merge a collection of events.  The resulting event will occur if at least one input event is occuring
 -- and will contain all simultaneously occurring events
-class Mergeable (d :: (* -> *) -> (* -> *) -> *) k where
-  mergeEvents :: R.Reflex t => d k (R.Event t) -> R.Event t (d k Identity)
+class Mergeable (dk :: (* -> *) -> *) where
+  mergeEvents :: R.Reflex t => dk (R.Event t) -> R.Event t (dk Identity)
 
-instance GCompare k => Mergeable DMap k where
+instance GCompare k => Mergeable (DMap k) where
   mergeEvents = R.merge
 
 -- | This class carries the ability to sequence patches in the way of MonadAdjust And then turn the result into a Dynamic.
@@ -87,9 +87,10 @@ class ToPatchType (f :: * -> *) k v a where
 
 {-
 mergeOverWithKey :: ( ToPatchType f k v v
-                    , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k v))
-                 => f (R.Event t v) -> R.Event (f v)
-mergeOver = fmap fromSeqType . R.merge . toSeqTypeWithFunctor
+             , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k v)
+             , Mergeable ((SeqType f k) (SeqTypeKey f k v)))
+  => (k -> v -> R.Event t v) -> f (R.Event t v) -> R.Event t (f v)
+mergeOverWithKey g = fmap (fromSeqType (Proxy :: Proxy k) (Proxy :: Proxy (R.Event t v))) . R.merge . toSeqTypeWithFunctor g
 -}
 
 
