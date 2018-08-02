@@ -16,6 +16,7 @@ module Reflex.Collections.Maps
   , listHoldWithKeyLHFMap
   , listWithKeyShallowDiffLHFMap
   , listWithKeyLHFMap
+  , sampledListWithKeyLHFMap
   , selectViewListWithKeyLHFMap
   , lhfMapDiffNoEq
   , lhfMapDiff
@@ -207,6 +208,17 @@ listWithKeyLHFMap :: forall f t m k v a. ( LHFMap f
                                          , R.PostBuild t m)
   => R.Dynamic t (f v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
 listWithKeyLHFMap dc h = fmap (fmap unWrapA . unWrapMap) <$> listWithKeyGeneral (WrapMap <$> dc) (toWrapA h)
+
+sampledListWithKeyLHFMap :: forall f t m k v a. ( LHFMap f
+                                         , LHFMapKey f ~ k
+                                         , Align f
+                                         , Ord k
+                                         , R.Adjustable t m
+                                         , MonadFix m
+                                         , R.MonadHold t m
+                                         , R.PostBuild t m)
+  => R.Dynamic t (f v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
+sampledListWithKeyLHFMap dc h = fmap (fmap unWrapA . unWrapMap) <$> sampledListWithKey (WrapMap <$> dc) (toWrapA h)
 
 
 instance (LHFMap (WrapMap f), LHFMapKey (WrapMap f) ~ k) => ToPatchType (WrapMap f) k v (R.Event t (k,a)) where

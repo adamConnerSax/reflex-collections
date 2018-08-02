@@ -21,9 +21,14 @@ module Reflex.Collections.Core
   , HasEmpty(..)
   , Diffable(..)
   , listWithKeyGeneral
+  , sampledListWithKey
   , listWithKeyShallowDiffGeneral
   , ToElemList(..)
   , selectViewListWithKeyGeneral
+  , listViewWithKeyGeneral'
+  , listWithKeyGeneral'
+  , hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent
+  , sampledDiffableDynamicToInitialPlusKeyDiffEvent -- Use with caution!! May cause problems in recursive contexts
   ) where
 
 import qualified Reflex                 as R
@@ -120,8 +125,8 @@ listHoldWithKeyGeneral c0 c' h = do
 
 -- for the listWithKey and listWithKeyShallow diff we need to be able to fan events and the ability to take and apply diffs on the original container
 -- We also need to be able to produce an empty container to bootstrap the initial value.  Couldn't we sample?
-
 -- This class encapsuates the types and functionality required to use "fan"
+-- can this be wholly derived from ToPatchType?
 class HasFan (f :: * -> *) v where
   type FanInKey f :: *
   type FanSelKey f v :: * -> *
@@ -220,38 +225,6 @@ hasEmptyListWithKey :: forall t m f k v a. ( R.Adjustable t m
 hasEmptyListWithKey vals mkChild = listWithKeyGeneral' hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent vals mkChild
 
 
-{-
--- These don't work because, I assume, of sample.
-sampledDiffableDynamicToInitialPlusKeyDiffEvent :: forall t m f df v. ( R.Reflex t
-                                                                      , Diffable f df
-                                                                      , MonadFix m
-                                                                      , R.MonadHold t m)
-  => R.Dynamic t (f v)
-  -> m (f v, R.Event t (df v))
-sampledDiffableDynamicToInitialPlusKeyDiffEvent vals = mdo
-  v0 <- R.sample . R.current $ vals
-  sentVals :: R.Dynamic t (f v) <- R.foldDyn applyDiff v0 changeVals
-  let changeVals :: R.Event t (df v)
-      changeVals = R.attachWith diffOnlyKeyChanges (R.current sentVals) $ R.updated vals
-  return $ (v0, changeVals)
-
-
-
-sampledListWithKey :: forall t m f k v a. ( R.Adjustable t m
-                                          , R.PostBuild t m
-                                          , MonadFix m
-                                          , R.MonadHold t m
-                                          , ToPatchType f k v a -- for the listHold
-                                          , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k a) -- for the listHold
-                                          , Diffable f (Diff f k)
-                                          , Functor (Diff f k)
-                                          , HasFan f v
-                                          , FanInKey f ~ k)
-  => R.Dynamic t (f v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
-sampledListWithKey vals mkChild = listWithKeyGeneral' sampledDiffableDynamicToInitialPlusKeyDiffEvent vals mkChild
--}
-
-
 
 -- | Create a dynamically-changing set of Event-valued widgets.
 listWithKeyGeneral :: forall t m f k v a. ( R.Adjustable t m
@@ -321,6 +294,40 @@ selectViewListWithKeyGeneral selection vals mkChild = do
     selectSelf <- mkChild k v selected
     return $ fmap ((,) k) selectSelf
   return $ R.switchPromptlyDyn $ R.leftmost . toElemList <$> selectChild
+
+
+
+sampledDiffableDynamicToInitialPlusKeyDiffEvent :: forall t m f df v. ( R.Reflex t
+                                                                      , Diffable f df
+                                                                      , MonadFix m
+                                                                      , R.MonadHold t m)
+  => R.Dynamic t (f v)
+  -> m (f v, R.Event t (df v))
+sampledDiffableDynamicToInitialPlusKeyDiffEvent vals = do
+  v0 <- R.sample . R.current $ vals
+  rec sentVals :: R.Dynamic t (f v) <- R.foldDyn applyDiff v0 changeVals
+      let changeVals :: R.Event t (df v)
+          changeVals = R.attachWith diffOnlyKeyChanges (R.current sentVals) $ R.updated vals
+  return $ (v0, changeVals)
+
+
+-- NB: This only works in non-recursive widgets.  But that may be en
+-- But that may be a fit with something like "(Enum k, Bounded k) => k -> v", which has no empty state.
+sampledListWithKey :: forall t m f k v a. ( R.Adjustable t m
+                                          , R.PostBuild t m
+                                          , MonadFix m
+                                          , R.MonadHold t m
+                                          , ToPatchType f k v a -- for the listHold
+                                          , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k a) -- for the listHold
+                                          , Diffable f (Diff f k)
+                                          , Functor (Diff f k)
+                                          , HasFan f v
+                                          , FanInKey f ~ k)
+  => R.Dynamic t (f v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
+sampledListWithKey vals mkChild = listWithKeyGeneral' sampledDiffableDynamicToInitialPlusKeyDiffEvent vals mkChild
+
+
+
 
 -- Old Code
 {-

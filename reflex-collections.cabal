@@ -32,7 +32,7 @@ library
   exposed-modules:
                   Reflex.Collections.Core
                   Reflex.Collections.Maps
-                  Reflex.Collections.HoldableArray
+                  Reflex.Collections.TotalArray
   other-modules:
 
   if flag(wkwebview) || flag(warp)
@@ -73,6 +73,7 @@ executable test
    cpp-options: -DUSE_GHCJS 
                 , cabal-macosx >= 0.2.3.4 && < 0.3
   build-depends:       base
+                     , array
                      , reflex
                      , reflex-collections
                      , ref-tf

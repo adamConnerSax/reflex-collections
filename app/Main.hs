@@ -23,10 +23,12 @@ import           Reflex.Dom.Old                   (MonadWidget)
 import           Control.Monad                    (join)
 import           Control.Monad.Fix                (MonadFix)
 
+import qualified Data.Array                       as A
 import qualified Data.Map                         as M
 import           Data.Maybe                       (fromJust, isNothing)
 import           Data.Monoid                      ((<>))
 import qualified Data.Text                        as T
+
 
 import           System.Process                   (spawnProcess)
 import           Text.Read                        (readMaybe)
@@ -35,6 +37,8 @@ import           Safe                             (headMay)
 
 import           Reflex.Collections.Core
 import           Reflex.Collections.Maps
+import           Reflex.Collections.TotalArray
+
 
 -- NB: This is just for warp.
 main::IO ()
@@ -46,12 +50,16 @@ main = do
 type ReflexConstraints t m = (MonadWidget t m, DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m, DomBuilderSpace m ~ GhcjsDomSpace)
 type WidgetConstraints t m k v = (ReflexConstraints t m, Show v, Read v, Ord k, Show k, Read k)
 
+data MyEnum = A | B | C | D deriving (Show, Read, Enum, Eq, Ord, Bounded, A.Ix)
+
 testWidget::JSM()
 testWidget = mainWidget $ do
   let simpleWidget = FWDyn $ fieldWidgetDyn' (readMaybe . T.unpack)  (restrictWidget' blurOrEnter)
       textWidget = FWDyn $ fieldWidgetDyn' Just (restrictWidget' blurOrEnter)
       keyedWidget = addFixedKeyToWidget id simpleWidget
-      x0 = M.fromList [("A",1),("B",2),("C",3)]
+      arrayWidget = addFixedKeyToWidget (T.pack . show) $ FWDyn $ fieldWidgetDyn' (readMaybe . T.unpack) (restrictWidget' blurOrEnter)
+      x0 :: M.Map T.Text Int = M.fromList [("A",1),("B",2),("C",3)]
+      a0 :: A.Array MyEnum Int = A.listArray (minBound, maxBound) [1,2,3,4]
   el "h1" $ text "reflex-dom \"listView\" Function Family Examples"
   smallBreak
   el "p" $ text "These editor widgets are each made using one of the listView family of functions.  I used each to build the same basic widget for editing a map.  The basic editor is then extended to support removing elements from the map and then adding them as well.  It turns out this can be done generically: using value widgets returning (Just v) for an edit and Nothing for a delete, and tacking an additional widget on to handle the addition of new elements."
@@ -75,6 +83,12 @@ testWidget = mainWidget $ do
   smallBreak
   el "span" $ text "result: "
   _ <- buildLBEMapLWK (addFixedKeyToWidget id (FWDyn $ readOnlyFieldWidget)) res6
+
+  bigBreak
+  el "p" $ text "Simple editor for a total array (an array indexed by a bounded enum with all values present"
+  totalArrayRes <- totalArrayBuildLBELWK arrayWidget $ constDyn a0
+  dynText $ fmap (T.pack . show) totalArrayRes
+
   return ()
 
 
@@ -86,15 +100,22 @@ bigBreak =   el "br" blank >> el "h1" (text "") >> el "br" blank
 
 
 type EditF t m k v = Dynamic t (M.Map k v)->m (Dynamic t (M.Map k v))
+type ArrayEditF t m k v = Dynamic t (A.Array k v)->m (Dynamic t (Maybe (A.Array k v)))
 
 -- simplest.  Use listWithKey.  This will be for ReadOnly and fixed element (no adds or deletes allowed) uses.
 -- Just make widget into right form and do the distribute over the result
-buildLBEMapLWK::WidgetConstraints t m k v=>FieldWidgetWithKey t m k v->EditF t m k v
+buildLBEMapLWK :: WidgetConstraints t m k v=>FieldWidgetWithKey t m k v->EditF t m k v
 buildLBEMapLWK editOneValueWK mapDyn0 = do
   let editW k vDyn =  el "br" blank >> fieldWidgetDyn (editOneValueWK k) (Just vDyn)
   mapOfDyn <- listWithKeyLHFMap mapDyn0 editW -- Dynamic t (M.Map k (Dynamic t (Maybe v)))
   return $ M.mapMaybe id <$> (join $ distributeMapOverDynPure <$> mapOfDyn)
 
+totalArrayBuildLBELWK :: (A.Ix k, WidgetConstraints t m k v) => FieldWidgetWithKey t m k v -> ArrayEditF t m k v
+totalArrayBuildLBELWK editOneValueWK totalArrayDyn0 = do
+  let editW k vDyn =  el "br" blank >> fieldWidgetDyn (editOneValueWK k) (Just vDyn)
+  arrayOfDyn <- listWithKeyTotalArray totalArrayDyn0 editW -- Dynamic t (A.Array k (Dynamic t (Maybe v)))
+  let x = join $ distributeArrayOverDynPure <$> arrayOfDyn
+  return $ sequence <$> x
 
 -- NB: ListViewWithKey returns an Event t (M.Map k v) but it contains only the keys for which things have changed
 -- So we use applyMap to put those edits into the output.
@@ -201,11 +222,11 @@ type FieldWidgetEv t m v = Maybe (Dynamic t v)-> m (Event t (Maybe v))
 
 data FieldWidget t m v = FWDyn (FieldWidgetDyn t m v) | FWEv (FieldWidgetEv t m v)
 
-fieldWidgetEv::(Functor m, Reflex t)=>FieldWidget t m v->FieldWidgetEv t m v
+fieldWidgetEv :: (Functor m, Reflex t)=>FieldWidget t m v->FieldWidgetEv t m v
 fieldWidgetEv (FWEv wEv) mvDyn   = wEv mvDyn
 fieldWidgetEv (FWDyn wDyn) mvDyn = updated <$> wDyn mvDyn
 
-fieldWidgetDyn::MonadHold t m=>FieldWidget t m v->FieldWidgetDyn t m v
+fieldWidgetDyn :: MonadHold t m => FieldWidget t m v -> FieldWidgetDyn t m v
 fieldWidgetDyn (FWDyn wDyn) mvDyn = wDyn mvDyn
 fieldWidgetDyn (FWEv wEv) mvDyn   = wEv mvDyn >>= holdDyn Nothing
 
@@ -216,18 +237,17 @@ applyToFieldWidget f fw = case fw of
 
 type FieldWidgetWithKey t m k v = k->FieldWidget t m v
 
-addFixedKeyToWidget::ReflexConstraints t m=>(k->T.Text)->FieldWidget t m v -> FieldWidgetWithKey t m k v
+addFixedKeyToWidget :: ReflexConstraints t m => (k -> T.Text) -> FieldWidget t m v -> FieldWidgetWithKey t m k v
 addFixedKeyToWidget printK fw k =
-  let addKey::ReflexConstraints t m=>m a -> m a
+  let addKey::ReflexConstraints t m => m a -> m a
       addKey x = el "span" $ text (printK k) >> x
   in applyToFieldWidget addKey fw
 
-
 type TWidget t m = TextInputConfig t -> m (TextInput t)
 
-fieldWidgetDyn'::(ReflexConstraints t m, Show v)=>(T.Text -> Maybe v)->(TWidget t m->TWidget t m)->FieldWidgetDyn t m v
+fieldWidgetDyn' :: (ReflexConstraints t m, Show v) => (T.Text -> Maybe v) -> (TWidget t m -> TWidget t m) -> FieldWidgetDyn t m v
 fieldWidgetDyn' parse f mvDyn = do
-  inputEv' <- maybe (return never) (traceDynAsEv (\x->"editWidgeDyn' input: v=" ++ show x)) mvDyn -- traced so we can see when widgets are updated vs rebuilt vs left alone
+  inputEv' <- maybe (return never) (traceDynAsEv (\x->"editWidgetDyn' input: v=" ++ show x)) mvDyn -- traced so we can see when widgets are updated vs rebuilt vs left alone
   let inputEv = T.pack . show <$> inputEv'
       config = TextInputConfig "text" "" inputEv (constDyn M.empty)
   valDyn <- _textInput_value <$> f textInput config
