@@ -13,7 +13,7 @@
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
 #endif
-module Reflex.Collections.Core
+module Reflex.Collections.KeyMappable
   (
    KeyMappable (..)
   ) where
@@ -23,7 +23,7 @@ import           Data.Kind              (Type)
 
 import qualified Data.Map as M
 import           Data.Hashable (Hashable)
-import qualified Data.HashMap as HM
+import qualified Data.HashMap.Strict as HM
 import qualified Data.IntMap  as IM
 import qualified Data.Array as A
 
@@ -33,7 +33,7 @@ class KeyMappable (f :: Type -> Type) k v where
   mapWithKey :: (k -> v -> a) -> f v -> f a
 
 instance Ord k => KeyMappable (M.Map k) k v where
-  mapWithKey = M.mapWithey
+  mapWithKey = M.mapWithKey
 
 instance Hashable k => KeyMappable (HM.HashMap k) k v where
   mapWithKey = HM.mapWithKey
@@ -41,7 +41,7 @@ instance Hashable k => KeyMappable (HM.HashMap k) k v where
 instance KeyMappable IM.IntMap Int v where
   mapWithKey = IM.mapWithKey
 
-instance A.Ix k => KeyMappable (Array k) k v where
+instance A.Ix k => KeyMappable (A.Array k) k v where
   mapWithKey = arrayMapWithKey
 
 arrayMapWithKey :: A.Ix k => (k -> v -> a) -> A.Array k v -> A.Array k a

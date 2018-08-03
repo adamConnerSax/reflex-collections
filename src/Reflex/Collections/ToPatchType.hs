@@ -13,7 +13,7 @@
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
 #endif
-module Reflex.Collections.Core
+module Reflex.Collections.ToPatchType
   (
     ToPatchType(..)
   , toSeqType
@@ -22,15 +22,17 @@ module Reflex.Collections.Core
   ) where
 
 import           Reflex.Collections.KeyMappable (KeyMappable(..))
-import           Reflex.Collections.SequenceableClasses (ReflexSequenceable(..), SequenceablePatch(..))
+import           Reflex.Collections.Sequenceable (ReflexSequenceable(..), PatchSequenceable(..))
+
+import qualified Reflex as R
 
 import           Data.Dependent.Map      (DMap, DSum ((:=>)))
 import qualified Data.Dependent.Map      as DM
 import           Reflex.Patch            (PatchDMap (..))
-import           Data.Functor.Compose    (Compose)
+import           Data.Functor.Compose    (Compose, getCompose)
 import           Data.Functor.Misc       (ComposeMaybe (..), Const2 (..),
                                           dmapToMap, mapWithFunctorToDMap)
-                 
+import           Data.Functor.Identity   (Identity(..))                 
 import           Data.Proxy              (Proxy (..))
 import           Data.Kind               (Type)
 
@@ -52,7 +54,7 @@ toSeqType pk = withFunctorToSeqType pk (Proxy :: Proxy v) . fmap Identity
 -- | Generalize distributeMapOverDynPure
 distributeOverDynPure :: forall t f k v. ( R.Reflex t
                                          , ToPatchType f k v v
-                                         , SequenceablePatch (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k v)
+                                         , PatchSequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k v)
                                          , ReflexSequenceable ((SeqType f k) (SeqTypeKey f k v)))
   => Proxy k -> f (R.Dynamic t v) -> R.Dynamic t (f v)
 distributeOverDynPure pk =
@@ -62,7 +64,7 @@ distributeOverDynPure pk =
 -- | Generalizes "mergeMap" to anything with ToPatchType where the Patches are Sequenceable.
 mergeOver :: forall t f k v. ( R.Reflex t
                              , ToPatchType f k (R.Event t v) v
-                             , SequenceablePatch (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k v)
+                             , PatchSequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k v)
                              , ReflexSequenceable ((SeqType f k) (SeqTypeKey f k v)))
   => Proxy k -> f (R.Event t v) -> R.Event t (f v)
 mergeOver pk fEv =
@@ -87,33 +89,33 @@ class KeyMappable f k v => ToPatchType (f :: Type -> Type) k v a where
   makePatchSeq :: Functor g => Proxy f -> (k -> v -> g a) -> Diff f k v -> SeqPatchType f k (SeqTypeKey f k a) g
 
 instance Ord k => ToPatchType (Map k) k v a where
-  type Diff (Map k) k = Compose (Map k) Maybe v
+  type Diff (Map k) k = Compose (Map k) Maybe
   type SeqType (Map k) k = DMap
   type SeqPatchType (Map k) k = PatchDMap
   type SeqTypeKey (Map k) k a = Const2 k a
   withFunctorToSeqType _ _ = mapWithFunctorToDMap
-  makePatchSeq _ h = PatchDMap . mapWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap h k) mv) . getCompose
+  makePatchSeq _ h = PatchDMap . mapWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) . getCompose
   fromSeqType _ _ = dmapToMap
 
-instance Hashable k => ToPatchType (HashMap k) k v a where
-  type Diff (HashMap k) k = Compose (HashMap k) Maybe v
+instance (Ord k, Eq k, Hashable k) => ToPatchType (HashMap k) k v a where
+  type Diff (HashMap k) k = Compose (HashMap k) Maybe
   type SeqType (HashMap k) k = DMap
   type SeqPatchType (HashMap k) k = PatchDMap
   type SeqTypeKey (HashMap k) k a = Const2 k a
   withFunctorToSeqType _ _ = hashMapWithFunctorToDMap
-  makePatchSeq _ h = PatchDMap .  hashMapWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap h k) mv) . getCompose
+  makePatchSeq _ h = PatchDMap .  hashMapWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) . getCompose
   fromSeqType _ _ = HM.fromList . fmap (\(Const2 k :=> Identity v) -> (k, v)) . DM.toList 
 
-hashMapWithFunctorToDMap :: (Functor g, Hashable k) => HashMap k (g v) -> DMap (Const2 k v) g  
+hashMapWithFunctorToDMap :: (Functor g, Ord k, Hashable k) => HashMap k (g v) -> DMap (Const2 k v) g  
 hashMapWithFunctorToDMap = DM.fromList . fmap (\(k, v) -> Const2 k :=> v) . HM.toList
 
 instance ToPatchType IntMap Int v a where
-  type Diff (IntMap) Int = Compose IntMap Maybe v
+  type Diff (IntMap) Int = Compose IntMap Maybe
   type SeqType (IntMap) Int = DMap
   type SeqPatchType (IntMap) Int = PatchDMap
   type SeqTypeKey (IntMap) Int a = Const2 Int a
   withFunctorToSeqType _ _ = intMapWithFunctorToDMap
-  makePatchSeq _ h = PatchDMap .  intMapWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap h k) mv) . getCompose
+  makePatchSeq _ h = PatchDMap .  intMapWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) . getCompose
   fromSeqType _ _ = IM.fromDistinctAscList . fmap (\(Const2 k :=> Identity v) -> (k, v)) . DM.toAscList
 
 intMapWithFunctorToDMap :: Functor g => IntMap (g v) -> DMap (Const2 Int v) g

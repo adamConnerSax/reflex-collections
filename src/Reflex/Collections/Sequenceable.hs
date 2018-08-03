@@ -4,7 +4,7 @@
 {-# LANGUAGE InstanceSigs          #-}
 {-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
---{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
@@ -33,11 +33,11 @@ import           Data.Kind              (Type)
 -- | This class carries the ability to do an efficient event merge
 -- "Merge a collection of events.  The resulting event will occur if at least one input event is occuring
 -- and will contain all simultaneously occurring events."
-class ReflexSequencable (dk :: (Type -> Type) -> Type) where
+class ReflexSequenceable (dk :: (Type -> Type) -> Type) where
   mergeEvents :: R.Reflex t => dk (R.Event t) -> R.Event t (dk Identity)
   traverseDynamic :: R.Reflex t => dk (R.Dynamic t) -> R.Dynamic t (dk Identity)
 
-instance GCompare k => Sequenceable (DMap k) where
+instance GCompare k => ReflexSequenceable (DMap k) where
   mergeEvents = R.merge
   traverseDynamic = R.distributeDMapOverDynPure
 
