@@ -38,7 +38,7 @@ instance Ord k => KeyMappable (M.Map k) k v where
 instance Hashable k => KeyMappable (HM.HashMap k) k v where
   mapWithKey = HM.mapWithKey
 
-instance KeyMappable IntMap Int v where
+instance KeyMappable IM.IntMap Int v where
   mapWithKey = IM.mapWithKey
 
 instance A.Ix k => KeyMappable (Array k) k v where

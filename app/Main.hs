@@ -35,9 +35,9 @@ import           Text.Read                        (readMaybe)
 
 import           Safe                             (headMay)
 
-import           Reflex.Collections.Core
-import           Reflex.Collections.Maps
-import           Reflex.Collections.TotalArray
+import           Reflex.Collections.Collections
+--import           Reflex.Collections.Maps
+--import           Reflex.Collections.TotalArray
 
 
 -- NB: This is just for warp.
@@ -107,13 +107,13 @@ type ArrayEditF t m k v = Dynamic t (A.Array k v)->m (Dynamic t (Maybe (A.Array 
 buildLBEMapLWK :: WidgetConstraints t m k v=>FieldWidgetWithKey t m k v->EditF t m k v
 buildLBEMapLWK editOneValueWK mapDyn0 = do
   let editW k vDyn =  el "br" blank >> fieldWidgetDyn (editOneValueWK k) (Just vDyn)
-  mapOfDyn <- listWithKeyLHFMap mapDyn0 editW -- Dynamic t (M.Map k (Dynamic t (Maybe v)))
+  mapOfDyn <- listWithKeyGeneral mapDyn0 editW -- Dynamic t (M.Map k (Dynamic t (Maybe v)))
   return $ M.mapMaybe id <$> (join $ distributeMapOverDynPure <$> mapOfDyn)
 
 totalArrayBuildLBELWK :: (A.Ix k, WidgetConstraints t m k v) => FieldWidgetWithKey t m k v -> ArrayEditF t m k v
 totalArrayBuildLBELWK editOneValueWK totalArrayDyn0 = do
   let editW k vDyn =  el "br" blank >> fieldWidgetDyn (editOneValueWK k) (Just vDyn)
-  arrayOfDyn <- listWithKeyTotalArray totalArrayDyn0 editW -- Dynamic t (A.Array k (Dynamic t (Maybe v)))
+  arrayOfDyn <- sampledListWithKey totalArrayDyn0 editW -- Dynamic t (A.Array k (Dynamic t (Maybe v)))
   let x = join $ distributeArrayOverDynPure <$> arrayOfDyn
   return $ sequence <$> x
 
@@ -123,7 +123,7 @@ buildLBEMapLVWK::WidgetConstraints t m k v=>FieldWidgetWithKey t m k v->EditF t 
 buildLBEMapLVWK editOneValueWK mapDyn0 = mdo
   let editW k vDyn = el "br" blank >> fieldWidgetEv (editOneValueWK k) (Just vDyn)
   newInputMapEv <- dynAsEv mapDyn0
-  mapEditsEv  <- listViewWithKey mapDyn0 editW -- Event t (M.Map k (Maybe v)), carries only updates
+  mapEditsEv  <- listViewWithKeyGeneral mapDyn0 editW -- Event t (M.Map k (Maybe v)), carries only updates
   let editedMapEv = attachWith (flip applyMap) (current mapDyn) mapEditsEv
       mapEv = leftmost [newInputMapEv, editedMapEv]
   mapDyn <- holdDyn M.empty mapEv
@@ -136,7 +136,7 @@ buildLBEMapLVWKSD::WidgetConstraints t m k v=>FieldWidgetWithKey t m k v->EditF 
 buildLBEMapLVWKSD editOneValueWK mapDyn0 = mdo
   let editW k v0 vEv =  holdDyn v0 vEv >>= \vDyn ->   el "br" blank >> (fieldWidgetEv (editOneValueWK k)) (Just vDyn)
   newInputMapEv <- dynAsEv mapDyn0
-  updateEvsDyn <- listWithKeyShallowDiff M.empty diffMapEv editW -- Dynamic t (Map k (Event t (Maybe v)))
+  updateEvsDyn <- listWithKeyShallowDiffGeneral M.empty diffMapEv editW -- Dynamic t (Map k (Event t (Maybe v)))
   let mapEditsEv =  switch $ mergeMap <$> current updateEvsDyn -- Event t (Map k (Maybe v))
       diffMapEv = fmap Just <$> newInputMapEv
       editedMapEv = attachWith (flip applyMap) (current mapDyn) mapEditsEv
@@ -167,7 +167,7 @@ buildLBEMapSVLWK editOneValueWK mapDyn0 = mdo
         k0Dyn <- holdDyn k0 newk0Ev
         let dropdownWidget k =  _dropdown_value <$> dropdown k (M.mapWithKey (\k _ ->T.pack . show $ k) <$> mapDyn) ddConfig -- this needs to know about deletes
         selDyn <- join <$> widgetHold (dropdownWidget k0) (dropdownWidget <$> newk0Ev)
-        selectViewListWithKey selDyn mapDyn0 editW  -- NB: this map doesn't need updating from edits or deletes
+        selectViewListWithKeyGeneral selDyn mapDyn0 editW  -- NB: this map doesn't need updating from edits or deletes
 
       (nonNullEv,nullEv) = fanBool . updated . uniqDyn $ M.null <$> mapDyn
       nullWidget = el "div" (text "Empty Map") >> return never

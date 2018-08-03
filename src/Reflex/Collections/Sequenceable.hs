@@ -9,7 +9,7 @@
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
 #endif
-module Reflex.Collections.SequenceableClasses
+module Reflex.Collections.Sequenceable
   (
     ReflexSequenceable(..)
   , PatchSequenceable(..)

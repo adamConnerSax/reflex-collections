@@ -30,9 +30,12 @@ library
    cpp-options: -DUSE_WKWEBVIEW -DUSE_JSADDLE
   hs-source-dirs: src
   exposed-modules:
-                  Reflex.Collections.Core
-                  Reflex.Collections.Maps
-                  Reflex.Collections.TotalArray
+                  Reflex.Collections.Collections
+                  Reflex.Collections.Sequenceable
+                  Reflex.Collections.KeyMappable
+                  Reflex.Collections.ToPatchType
+                  Reflex.Collections.HasFan
+                  Reflex.Collections.Diffable
   other-modules:
 
   if flag(wkwebview) || flag(warp)
