@@ -9,13 +9,17 @@
 {-# LANGUAGE RecursiveDo           #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE DefaultSignatures #-}
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
 #endif
 module Reflex.Collections.Core
   (
     Sequenceable(..)
+  , KeyMappable (..)
   , ToPatchType(..)
+  , toSeqType
+  , mergeOver
   , listHoldWithKeyGeneral
   , HasFan(..)
   , HasEmpty(..)
@@ -43,16 +47,18 @@ import           Control.Monad.Fix      (MonadFix)
 import           Control.Monad.Identity (Identity (..), void)
 
 import           Data.Proxy             (Proxy (..))
-
+import Data.Kind (Type)
 
 -- | This class carries the ability to do an efficient event merge
 -- "Merge a collection of events.  The resulting event will occur if at least one input event is occuring
 -- and will contain all simultaneously occurring events."
-class Mergeable (dk :: (* -> *) -> *) where
+class ReflexTraversable (dk :: (Type -> Type) -> Type) where
   mergeEvents :: R.Reflex t => dk (R.Event t) -> R.Event t (dk Identity)
+  traverseDynamic :: R.Reflex t => dk (R.Dynamic t) -> R.Dynamic t (dk Identity)
 
-instance GCompare k => Mergeable (DMap k) where
+instance GCompare k => ReflexTraversable (DMap k) where
   mergeEvents = R.merge
+  traverseDynamic = R.distributeDMapOverDynPure
 
 -- | This class carries the ability to sequence patches in the way of MonadAdjust And then turn the result into a Dynamic.
 -- sequenceWithPatch takes a static d containing adjustable (m a), e.g., widgets, and event carrying patches, that is
@@ -61,7 +67,9 @@ instance GCompare k => Mergeable (DMap k) where
 -- and returns an adjustable monad containing a Dynamic of a value containing d.
 -- |
 class ( R.Patch (pd k Identity)
-      , R.PatchTarget (pd k Identity) ~ d k Identity) => Sequenceable (d :: (* -> *) -> (* -> *) -> *) (pd :: (* -> *) -> (* -> *) -> *)  (k :: * -> *) where
+      , R.PatchTarget (pd k Identity) ~ d k Identity)
+  => Sequenceable (d :: (Type -> Type) -> (Type -> Type) -> Type)
+                  (pd :: (Type -> Type) -> (Type -> Type) -> Type)  (k :: Type -> Type) where
   sequenceWithPatch :: R.Adjustable t m => d k m -> R.Event t (pd k m) -> m (d k Identity, R.Event t (pd k Identity))
   patchPairToDynamic :: (R.MonadHold t m, R.Reflex t) =>d k Identity -> R.Event t (pd k Identity) -> m (R.Dynamic t (d k Identity))
 
@@ -80,22 +88,43 @@ instance (GCompare (Const2 k a), Ord k) => Sequenceable DMap PatchDMap (Const2 k
   patchPairToDynamic a0 a' = R.incrementalToDynamic <$> R.holdIncremental a0 a'
 
 
+-- recover the ability to map with the key as input
+class KeyMappable (f :: Type -> Type) k v where
+  mapWithKey :: (k -> v -> a) -> f v -> f a
+
 -- This class has the capabilities to translate f v and its difftype into types that are sequenceable, and then bring the original type back
 -- This requires that the Diff type be mapped to the correct type for diffing at the sequenceable level (e.g., as a DMap).
-class ToPatchType (f :: * -> *) k v a where
-  type Diff f k :: * -> *
-  type SeqType  f k :: (* -> *) -> (* -> *) -> *
-  type SeqPatchType f k :: (* -> *) -> (* -> *) -> *
-  type SeqTypeKey f k a :: * -> *
-  toSeqTypeWithFunctor :: Functor g => (k -> v -> g a) -> f v -> SeqType f k (SeqTypeKey f k a) g
-  makePatchSeq :: Functor g => Proxy f -> (k -> v -> g a) -> Diff f k v -> SeqPatchType f k (SeqTypeKey f k a) g
+class KeyMappable f k v => ToPatchType (f :: Type -> Type) k v a where
+  type Diff f k :: Type -> Type
+  type SeqType f k :: (Type -> Type) -> (Type -> Type) -> Type
+  type SeqPatchType f k :: (Type -> Type) -> (Type -> Type) -> Type
+  type SeqTypeKey f k a :: Type -> Type
+  withFunctorToSeqType :: Functor g => Proxy k -> Proxy v -> f (g a) -> SeqType f k (SeqTypeKey f k a) g
   fromSeqType :: Proxy k -> Proxy v -> SeqType f k (SeqTypeKey f k a) Identity -> f a
+  
+  toSeqTypeWithFunctor :: Functor g => (k -> v -> g a) -> f v -> SeqType f k (SeqTypeKey f k a) g
+  toSeqTypeWithFunctor h = withFunctorToSeqType (Proxy :: Proxy k) (Proxy :: Proxy v) . mapWithKey h 
+
+  makePatchSeq :: Functor g => Proxy f -> (k -> v -> g a) -> Diff f k v -> SeqPatchType f k (SeqTypeKey f k a) g
+
+toSeqType :: forall f k v. (Functor f, ToPatchType f k v v) => Proxy k -> f v -> (SeqType f k (SeqTypeKey f k v) Identity)
+toSeqType pk = withFunctorToSeqType pk (Proxy :: Proxy v) . fmap Identity
+
+-- | Generalize distributeMapOverDynPure
+distributeOverDynPure :: forall t f k v. ( R.Reflex t
+                                         , ToPatchType f k v v
+                                         , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k v)
+                                         , ReflexTraversable ((SeqType f k) (SeqTypeKey f k v)))
+  => Proxy k -> f (R.Dynamic t v) -> R.Dynamic t (f v)
+distributeOverDynPure pk =
+  let pv = Proxy :: Proxy v
+  in fmap (fromSeqType pk pv) . traverseDynamic . (withFunctorToSeqType pk pv)
 
 -- | Generalizes "mergeMap" to anything with ToPatchType where the Patches are Sequenceable.
 mergeOver :: forall t f k v. ( R.Reflex t
                              , ToPatchType f k (R.Event t v) v
                              , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k v)
-                             , Mergeable ((SeqType f k) (SeqTypeKey f k v)))
+                             , ReflexTraversable ((SeqType f k) (SeqTypeKey f k v)))
   => Proxy k -> f (R.Event t v) -> R.Event t (f v)
 mergeOver pk fEv =
   let id2 = const id :: (k -> R.Event t v -> R.Event t v)
@@ -123,13 +152,14 @@ listHoldWithKeyGeneral c0 c' h = do
   (a0,a') <- sequenceWithPatch dc0 dc'
   fmap fromSeqType' <$> patchPairToDynamic a0 a'
 
--- for the listWithKey and listWithKeyShallow diff we need to be able to fan events and the ability to take and apply diffs on the original container
+-- for the listWithKey and listWithKeyShallow diff we need to be able to fan events
+-- and the ability to take and apply diffs on the original container
 -- We also need to be able to produce an empty container to bootstrap the initial value.  Couldn't we sample?
 -- This class encapsuates the types and functionality required to use "fan"
 -- can this be wholly derived from ToPatchType?
-class HasFan (f :: * -> *) v where
-  type FanInKey f :: *
-  type FanSelKey f v :: * -> *
+class HasFan (f :: Type -> Type) v where
+  type FanInKey f :: Type
+  type FanSelKey f v :: Type -> Type
   makeSelKey :: Proxy f -> Proxy v -> FanInKey f -> FanSelKey f v v
   doFan :: R.Reflex t => Proxy v -> R.Event t (f v) -> R.EventSelector t (FanSelKey f v)
 
@@ -162,7 +192,7 @@ listViewWithKeyGeneral' ::  forall t m f k v a. ( R.Adjustable t m
                                                 , ToPatchType f k (R.Event t a) a
                                                 , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k (R.Event t a))
                                                 , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k a)
-                                                , Mergeable ((SeqType f k) (SeqTypeKey f k a))
+                                                , ReflexTraversable ((SeqType f k) (SeqTypeKey f k a))
                                                 , HasFan f v
                                                 , FanInKey f ~ k)
   => (R.Dynamic t (f v) -> m (f v, R.Event t (Diff f k v)))
@@ -179,7 +209,7 @@ class HasEmpty a where
 -- also supports a Map.difference style operation on the diff itself (for splitting out value updates)
 -- diffOnlyKeyChanges and editDiffLeavingDeletes are both too specific, I think.
 -- NB: applyDiffD (diffD x y) y = x
-class Diffable (f :: * -> *) (df :: * -> *) where
+class Diffable (f :: Type -> Type) (df :: Type -> Type) where
   diffNoEq :: f v -> f v -> df v
   diff :: Eq v => f v -> f v -> df v
   applyDiff :: df v -> f v -> f v
@@ -266,7 +296,7 @@ listWithKeyShallowDiffGeneral initialVals valsChanged mkChild = do
     mkChild k v $ R.select childValChangedSelector $ makeSelKey' k
 
 
-class ToElemList (f :: * -> *) where
+class ToElemList (f :: Type -> Type) where
   toElemList::f v -> [v]
 
 -- | Create a dynamically-changing set of widgets, one of which is selected at any time.

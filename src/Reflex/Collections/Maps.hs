@@ -77,7 +77,7 @@ lhfFanMap = R.fan . fmap lhfMapToDMap
 lhfMapToDMap :: LHFMap f => f v -> DMap (Const2 (LHFMapKey f) v) Identity
 lhfMapToDMap = lhfMapWithFunctorToDMap . fmap Identity
 
-distributeLHFMapOverDynPure :: (LHFMap f,R.Reflex t,Ord (LHFMapKey f))=>f (R.Dynamic t v) -> R.Dynamic t (f v)
+distributeLHFMapOverDynPure :: (LHFMap f, R.Reflex t, Ord (LHFMapKey f))=>f (R.Dynamic t v) -> R.Dynamic t (f v)
 distributeLHFMapOverDynPure = fmap lhfDMapToMap . R.distributeDMapOverDynPure . lhfMapWithFunctorToDMap
 
 -- | Wrapper so that map instances won't be too general
@@ -109,12 +109,16 @@ fromWrapA :: Functor g => (k -> v -> g (WrapA a)) -> (k -> v -> g a)
 fromWrapA f x y = unWrapA <$> f x y
 
 
-instance (LHFMap (WrapMap f), LHFMapKey (WrapMap f) ~ k) => ToPatchType (WrapMap f) k v (WrapA a) where
+instance (LHFMap f, LHFMapKey (WrapMap f) ~ k)  => KeyMappable (WrapMap f) k v where
+  mapWithKey h = WrapMap . lhfMapWithKey h . unWrapMap
+
+instance (LHFMap f, LHFMap (WrapMap f), LHFMapKey (WrapMap f) ~ k) => ToPatchType (WrapMap f) k v (WrapA a) where
   type Diff (WrapMap f) k = Compose (WrapMap f) Maybe
   type SeqType (WrapMap f) k = DM.DMap
   type SeqPatchType (WrapMap f) k = PatchDMap
   type SeqTypeKey (WrapMap f) k (WrapA a) = Const2 k a
-  toSeqTypeWithFunctor h = lhfMapWithFunctorToDMap . lhfMapWithKey (fromWrapA h)
+  withFunctorToSeqType _ _  = lhfMapWithFunctorToDMap . fmap (fmap unWrapA)
+--  toSeqTypeWithFunctor h = lhfMapWithFunctorToDMap . lhfMapWithKey (fromWrapA h)
   makePatchSeq _ h = PatchDMap . lhfMapWithFunctorToDMap . lhfMapWithKey (\k mv -> ComposeMaybe $ fmap (fromWrapA h k) mv) . getCompose
   fromSeqType _ _ = fmap WrapA . lhfDMapToMap
 
@@ -221,7 +225,7 @@ sampledListWithKeyLHFMap :: forall f t m k v a. ( LHFMap f
 sampledListWithKeyLHFMap dc h = fmap (fmap unWrapA . unWrapMap) <$> sampledListWithKey (WrapMap <$> dc) (toWrapA h)
 
 
-instance (LHFMap (WrapMap f), LHFMapKey (WrapMap f) ~ k) => ToPatchType (WrapMap f) k v (R.Event t (k,a)) where
+instance (LHFMap f, LHFMap (WrapMap f), LHFMapKey (WrapMap f) ~ k) => ToPatchType (WrapMap f) k v (R.Event t (k,a)) where
   type Diff (WrapMap f) k = Compose (WrapMap f) Maybe
   type SeqType (WrapMap f) k = DM.DMap
   type SeqPatchType (WrapMap f) k = PatchDMap

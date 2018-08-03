@@ -71,6 +71,9 @@ dmapToArray dm =
 distributeArrayOverDynPure::(R.Reflex t, A.Ix k) => A.Array k (R.Dynamic t v) -> R.Dynamic t (A.Array k v)
 distributeArrayOverDynPure = fmap dmapToArray . R.distributeDMapOverDynPure . arrayWithFunctorToDMap
 
+instance A.Ix k => KeyMappable (A.Array k) k v where
+  mapWithKey = arrayMapWithKey
+
 newtype ArrayDiff k v = ArrayDiff { diff :: [(k,v)] }
 
 instance A.Ix k => ToPatchType (A.Array k) k v a where
@@ -78,9 +81,10 @@ instance A.Ix k => ToPatchType (A.Array k) k v a where
   type SeqType (A.Array k) k = DM.DMap
   type SeqPatchType (A.Array k) k = PatchDMap
   type SeqTypeKey (A.Array k) k a = Const2 k a
-  toSeqTypeWithFunctor h a = arrayWithFunctorToDMap $ arrayMapWithKey h a
-  makePatchSeq _ h (ArrayDiff ad) = PatchDMap .  DM.fromList $ fmap (\(k, v) -> Const2 k :=> (ComposeMaybe . Just $ h k v)) ad
+  withFunctorToSeqType _ _ = arrayWithFunctorToDMap
   fromSeqType _ _ dm = dmapToArray dm
+--  toSeqTypeWithFunctor h a = arrayWithFunctorToDMap $ arrayMapWithKey h a
+  makePatchSeq _ h (ArrayDiff ad) = PatchDMap .  DM.fromList $ fmap (\(k, v) -> Const2 k :=> (ComposeMaybe . Just $ h k v)) ad
 
 
 instance (A.Ix k, Ord k) => HasFan (A.Array k) v where
