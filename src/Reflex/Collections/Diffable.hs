@@ -37,6 +37,7 @@ import qualified Data.HashMap.Strict as HM
 import           Data.Array             (Array, Ix)
 
 
+-- | Given a diffable collection that has an empty state, we can make a diff such that "applyDiff empty . toDiff = id"  
 toDiff :: (HasEmpty (f v), Diffable f df) => f v -> df v
 toDiff = flip diffNoEq empty
 
