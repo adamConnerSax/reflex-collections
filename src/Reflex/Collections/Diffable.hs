@@ -25,7 +25,12 @@ import           Reflex.Collections.ToPatchType (ArrayDiff(..))
 import qualified Reflex                 as R
 import           Data.Proxy             (Proxy (..))
 import           Data.Kind              (Type)
-import           Data.Functor.Compose    (Compose)
+import           Data.Functor.Compose   (Compose(..))
+import           Data.Align             (Align(..))
+import           Data.These             (These(..))
+import           Data.Foldable          (foldl')
+import           Data.Maybe             (isNothing)
+
 
 import           Data.Map               (Map)
 import qualified Data.Map               as M
@@ -35,6 +40,8 @@ import           Data.Hashable          (Hashable)
 import           Data.HashMap.Strict    (HashMap)
 import qualified Data.HashMap.Strict as HM
 import           Data.Array             (Array, Ix)
+import qualified Data.Array          as A
+
 
 
 -- | Given a diffable collection that has an empty state, we can make a diff such that "applyDiff empty . toDiff = id"  
@@ -57,6 +64,8 @@ instance Hashable k => HasEmpty (HashMap k v) where
 instance HasEmpty (IntMap v) where
   empty = IM.empty
 
+
+
 -- encapsulates the ability to diff two containers and then apply the diff to regain the original
 -- also supports a Map.difference style operation on the diff itself (for splitting out value updates)
 -- diffOnlyKeyChanges and editDiffLeavingDeletes are both too specific, I think.
@@ -66,7 +75,7 @@ class Diffable (f :: Type -> Type) (df :: Type -> Type) where
   diff :: Eq v => f v -> f v -> df v
   applyDiff :: df v -> f v -> f v
   diffOnlyKeyChanges :: f v -> f v -> df v
-  editDiffLeavingDeletes :: Proxy f -> df v -> df k -> df v -- this removes 2nd diff from first, except when first indicates a delete. May not generalize.
+  editDiffLeavingDeletes :: Proxy f -> df v -> df v -> df v -- this removes 2nd diff from first, except when first indicates a delete. May not generalize.
 
 instance Ix k => Diffable (Array k) (ArrayDiff k) where
   diffNoEq old new = ArrayDiff $ A.assocs new
@@ -78,58 +87,61 @@ instance Ix k => Diffable (Array k) (ArrayDiff k) where
   diffOnlyKeyChanges _ _ = ArrayDiff []
   editDiffLeavingDeletes _ d1 d2 = ArrayDiff [] -- we could implement this partially but I don't think we need it.
 
-instance Ord k => Diffable (Map k) (Compose (Map k) Maybe v) where
+type MapDiff f = Compose f Maybe
+
+instance Ord k => Diffable (Map k) (MapDiff (Map k)) where
   diffNoEq = mapDiffNoEq
   diff = mapDiff M.mapMaybe
   applyDiff = mapApplyDiff M.union M.difference M.filter M.mapMaybe
   diffOnlyKeyChanges = mapDiffOnlyKeyChanges M.mapMaybe
-  editDiffLeavingDeletes = mapEditDiffLeavingDeletes M.mapDifferenceWith
+  editDiffLeavingDeletes _ = mapEditDiffLeavingDeletes M.differenceWith
 
-instance Hashable k => Diffable (HashMap k) (Compose (HashMap k) Maybe v) where
+instance (Eq k, Hashable k) => Diffable (HashMap k) (MapDiff (HashMap k)) where
   diffNoEq = mapDiffNoEq
   diff = mapDiff HM.mapMaybe
   applyDiff = mapApplyDiff HM.union HM.difference HM.filter HM.mapMaybe
   diffOnlyKeyChanges = mapDiffOnlyKeyChanges HM.mapMaybe
-  editDiffLeavingDeletes = mapEditDiffLeavingDeletes HM.mapDifferenceWith
+  editDiffLeavingDeletes _ = mapEditDiffLeavingDeletes HM.differenceWith
 
-instance Diffable IntMap (Compose IntMap Maybe v) where
+instance Diffable IntMap (MapDiff IntMap) where
   diffNoEq = mapDiffNoEq
   diff = mapDiff IM.mapMaybe
   applyDiff = mapApplyDiff IM.union IM.difference IM.filter IM.mapMaybe
   diffOnlyKeyChanges = mapDiffOnlyKeyChanges IM.mapMaybe
-  editDiffLeavingDeletes = mapEditDiffLeavingDeletes IM.mapDifferenceWith
+  editDiffLeavingDeletes _ = mapEditDiffLeavingDeletes IM.differenceWith
  
-mapDiffNoEq :: (Functor f, Align f) => f v -> f v -> Compose f Maybe v
+mapDiffNoEq :: (Functor f, Align f) => f v -> f v -> MapDiff f v
 mapDiffNoEq old new =  Compose $ flip fmap (align old new) $ \case
   This _ -> Nothing -- in old but not new, so delete
   That v -> Just v -- in new but not old, so put in patch
   These _ v -> Just v -- in both and, without Eq, we don't know if the value changed, so put possibly new value in patch
 
-mapDiff :: (Eq v, Functor f, Align f) => (f (Maybe v) -> f v) -> f v -> f v -> Compose f Maybe v
+mapDiff :: (Eq v, Functor f, Align f) =>  (forall a b.((a -> Maybe b) -> f a  -> f b)) -> f v -> f v -> MapDiff f v
 mapDiff mapMaybe old new = Compose $ flip mapMaybe (align old new) $ \case
   This _ -> Just Nothing -- in old but not new, so delete
   That v -> Just $ Just v -- in new but not old, so put in patch
   These oldV newV -> if oldV == newV then Nothing else Just $ Just newV -- in both and without Eq I don't know if the value changed, so put possibly new value in patch
 
 mapApplyDiff ::
-  (f v -> f v -> f v) -- union
-  -> (f v -> f v -> f v) -- difference, can be implemented as "differenceWith (\_ _ -> Nothing)" 
-  -> ((v -> Bool) -> f v -> f v) -- filter
-  -> (f (Maybe v) -> f v) -- mapMaybe
+  (forall a. (f a -> f a -> f a)) -- union
+  -> (forall a. (f a -> f a -> f a)) -- difference
+  -> (forall a. ((a -> Bool) -> f a -> f a)) -- filter
+  -> (forall a b. ((a -> Maybe b) -> f a -> f b)) -- mapMaybe
   -> Compose f Maybe v
   -> f v
-mapApplyDiff mapUnion mapDifference mapDifferenceWith mapFilter mapMaybe patch old =  
+  -> f v
+mapApplyDiff mapUnion mapDifference mapFilter mapMaybe patch old =  
     let deletions = mapFilter isNothing (getCompose patch)
         insertions = mapMaybe id  $ (getCompose patch) `mapDifference` deletions
-    in insertions `lhfMapUnion` (old `mapDifference` deletions)
+    in insertions `mapUnion` (old `mapDifference` deletions)
 
-mapDiffOnlyKeyChanges :: (Align f, Functor f) => (f (Maybe v) -> f v) -> f v -> f v -> Compose f Maybe v
+mapDiffOnlyKeyChanges :: (Align f, Functor f) => (forall a b.((a -> Maybe b) -> f a -> f b)) -> f v -> f v -> MapDiff f v
 mapDiffOnlyKeyChanges mapMaybe old new = Compose $ flip mapMaybe (align olds news) $ \case
   This _ -> Just Nothing
   These _ _ -> Nothing
   That new -> Just $ Just new
 
-mapEditDiffLeavingDeletes :: ((v -> v -> Maybe v) -> f v -> f v) -> Compose f Maybe v -> Compose f Maybe v -> Compose f Maybe v
+mapEditDiffLeavingDeletes :: ((v -> v -> Maybe v) -> f v -> f v -> f v) -> MapDiff f v -> MapDiff f v -> MapDiff f v
 mapEditDiffLeavingDeletes mapDifferenceWith da db =
   let relevantPatch patch _ = case patch of
         Nothing -> Just Nothing -- it's a delete

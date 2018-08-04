@@ -19,6 +19,7 @@ module Reflex.Collections.ToPatchType
   , toSeqType
   , distributeOverDynPure
   , mergeOver
+  , ArrayDiff(..)
   ) where
 
 import           Reflex.Collections.KeyMappable (KeyMappable(..))
