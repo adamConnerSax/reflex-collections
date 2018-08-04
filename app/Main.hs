@@ -22,13 +22,14 @@ import           Reflex.Dom.Old                   (MonadWidget)
 
 import           Control.Monad                    (join)
 import           Control.Monad.Fix                (MonadFix)
+import           Data.Functor.Compose             (Compose (..))
 
 import qualified Data.Array                       as A
 import qualified Data.Map                         as M
 import           Data.Maybe                       (fromJust, isNothing)
 import           Data.Monoid                      ((<>))
+import           Data.Proxy                       (Proxy (..))
 import qualified Data.Text                        as T
-
 
 import           System.Process                   (spawnProcess)
 import           Text.Read                        (readMaybe)
@@ -36,8 +37,6 @@ import           Text.Read                        (readMaybe)
 import           Safe                             (headMay)
 
 import           Reflex.Collections.Collections
---import           Reflex.Collections.Maps
---import           Reflex.Collections.TotalArray
 
 
 -- NB: This is just for warp.
@@ -110,11 +109,11 @@ buildLBEMapLWK editOneValueWK mapDyn0 = do
   mapOfDyn <- listWithKeyGeneral mapDyn0 editW -- Dynamic t (M.Map k (Dynamic t (Maybe v)))
   return $ M.mapMaybe id <$> (join $ distributeMapOverDynPure <$> mapOfDyn)
 
-totalArrayBuildLBELWK :: (A.Ix k, WidgetConstraints t m k v) => FieldWidgetWithKey t m k v -> ArrayEditF t m k v
+totalArrayBuildLBELWK :: forall t m k v. (A.Ix k, WidgetConstraints t m k v) => FieldWidgetWithKey t m k v -> ArrayEditF t m k v
 totalArrayBuildLBELWK editOneValueWK totalArrayDyn0 = do
   let editW k vDyn =  el "br" blank >> fieldWidgetDyn (editOneValueWK k) (Just vDyn)
   arrayOfDyn <- sampledListWithKey totalArrayDyn0 editW -- Dynamic t (A.Array k (Dynamic t (Maybe v)))
-  let x = join $ distributeArrayOverDynPure <$> arrayOfDyn
+  let x = join $ distributeOverDynPure (Proxy :: Proxy k) <$> arrayOfDyn
   return $ sequence <$> x
 
 -- NB: ListViewWithKey returns an Event t (M.Map k v) but it contains only the keys for which things have changed
@@ -132,13 +131,13 @@ buildLBEMapLVWK editOneValueWK mapDyn0 = mdo
 -- now with ListViewWithKeyShallowDiff, just so I understand things.
 -- ListViewWithKeyShallowDiff takes an (Event t (Map k, (Maybe v))) as input rather than the dynamic map.
 -- so there would be more efficient ways to do, e.g., adds, in this case.
-buildLBEMapLVWKSD::WidgetConstraints t m k v=>FieldWidgetWithKey t m k v->EditF t m k v
+buildLBEMapLVWKSD :: WidgetConstraints t m k v => FieldWidgetWithKey t m k v -> EditF t m k v
 buildLBEMapLVWKSD editOneValueWK mapDyn0 = mdo
   let editW k v0 vEv =  holdDyn v0 vEv >>= \vDyn ->   el "br" blank >> (fieldWidgetEv (editOneValueWK k)) (Just vDyn)
   newInputMapEv <- dynAsEv mapDyn0
   updateEvsDyn <- listWithKeyShallowDiffGeneral M.empty diffMapEv editW -- Dynamic t (Map k (Event t (Maybe v)))
   let mapEditsEv =  switch $ mergeMap <$> current updateEvsDyn -- Event t (Map k (Maybe v))
-      diffMapEv = fmap Just <$> newInputMapEv
+      diffMapEv = Compose . fmap Just <$> newInputMapEv
       editedMapEv = attachWith (flip applyMap) (current mapDyn) mapEditsEv
       newMapEv = leftmost [newInputMapEv, editedMapEv]
   mapDyn <- holdDyn M.empty newMapEv

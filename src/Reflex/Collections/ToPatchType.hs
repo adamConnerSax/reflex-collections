@@ -19,6 +19,7 @@ module Reflex.Collections.ToPatchType
   , toSeqType
   , distributeOverDynPure
   , mergeOver
+  , MapDiff
   , ArrayDiff(..)
   ) where
 
@@ -38,7 +39,7 @@ import           Data.Proxy              (Proxy (..))
 import           Data.Kind               (Type)
 
 import           Data.Map (Map)
-import qualified Data.Map as M
+--import qualified Data.Map as M
 import           Data.IntMap (IntMap)
 import qualified Data.IntMap as IM
 import           Data.Hashable           (Hashable)
@@ -89,8 +90,10 @@ class KeyMappable f k v => ToPatchType (f :: Type -> Type) k v a where
 
   makePatchSeq :: Functor g => Proxy f -> (k -> v -> g a) -> Diff f k v -> SeqPatchType f k (SeqTypeKey f k a) g
 
+type MapDiff f = Compose f Maybe
+
 instance Ord k => ToPatchType (Map k) k v a where
-  type Diff (Map k) k = Compose (Map k) Maybe
+  type Diff (Map k) k = MapDiff (Map k)
   type SeqType (Map k) k = DMap
   type SeqPatchType (Map k) k = PatchDMap
   type SeqTypeKey (Map k) k a = Const2 k a
@@ -99,7 +102,7 @@ instance Ord k => ToPatchType (Map k) k v a where
   fromSeqType _ _ = dmapToMap
 
 instance (Ord k, Eq k, Hashable k) => ToPatchType (HashMap k) k v a where
-  type Diff (HashMap k) k = Compose (HashMap k) Maybe
+  type Diff (HashMap k) k = MapDiff (HashMap k)
   type SeqType (HashMap k) k = DMap
   type SeqPatchType (HashMap k) k = PatchDMap
   type SeqTypeKey (HashMap k) k a = Const2 k a
@@ -111,7 +114,7 @@ hashMapWithFunctorToDMap :: (Functor g, Ord k, Hashable k) => HashMap k (g v) ->
 hashMapWithFunctorToDMap = DM.fromList . fmap (\(k, v) -> Const2 k :=> v) . HM.toList
 
 instance ToPatchType IntMap Int v a where
-  type Diff (IntMap) Int = Compose IntMap Maybe
+  type Diff (IntMap) Int = MapDiff IntMap
   type SeqType (IntMap) Int = DMap
   type SeqPatchType (IntMap) Int = PatchDMap
   type SeqTypeKey (IntMap) Int a = Const2 Int a
@@ -124,6 +127,9 @@ intMapWithFunctorToDMap = DM.fromDistinctAscList . fmap (\(k, v) -> Const2 k :=>
 
 
 newtype ArrayDiff k v = ArrayDiff { diff :: [(k,v)] }
+
+instance Functor (ArrayDiff k) where
+  fmap f = ArrayDiff . fmap (\(k,v) -> (k,f v)) . diff
 
 instance Ix k => ToPatchType (Array k) k v a where
   type Diff (Array k) k = ArrayDiff k
