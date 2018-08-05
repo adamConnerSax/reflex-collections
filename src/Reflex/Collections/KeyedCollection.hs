@@ -64,12 +64,15 @@ newtype ArrayDiff k v = ArrayDiff { diff :: [(k,v)] }
 instance Functor (ArrayDiff k) where
   fmap f = ArrayDiff . fmap (\(k,v) -> (k,f v)) . diff
 
-instance (Bounded k, A.Ix k) => KeyedCollection (A.Array k) where
+instance A.Ix k => KeyedCollection (A.Array k) where
   type Key (A.Array k) = k
   type Diff (A.Array k) = ArrayDiff k
   mapWithKey = arrayMapWithKey
   toKeyValueList = A.assocs
-  fromKeyValueList = A.array (minBound, maxBound) -- NB: this will be undefined at any key in the range missing from the list
+  fromKeyValueList = arrayFromKeyValueList -- NB: this will be undefined at any key in the range missing from the list
+
+arrayFromKeyValueList :: A.Ix k => [(k,v)] -> A.Array k v
+arrayFromKeyValueList l = let keys = fst <$> l in A.array (minimum keys, maximum keys) l
 
 arrayMapWithKey :: A.Ix k => (k -> v -> a) -> A.Array k v -> A.Array k a
 arrayMapWithKey h arr =

@@ -78,7 +78,7 @@ instance HasFan (MapDiff IntMap) where
   makeSelKey _ _ = Const2
   doFan = R.fan . fmap (toSeqType . (IM.mapMaybe id)  . getCompose)
 
-instance (Ix k, Bounded k, Ord k) => HasFan (Array k) where
+instance (Ix k, Ord k) => HasFan (Array k) where
   type FanInKey (Array k) = k
   type FanSelKey (Array k) = Const2 k
   makeSelKey _ _ = Const2
