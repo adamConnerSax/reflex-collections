@@ -16,17 +16,11 @@ module Reflex.Collections.Sequenceable
   ) where
 
 import qualified Reflex                 as R
-
-import           Data.Dependent.Map     (DMap, GCompare)
-import           Data.Functor.Compose   (Compose (Compose, getCompose))
-import           Data.Functor.Misc      (Const2 (..))
 import           Reflex.Patch           (PatchDMap (..))
 
-
-import           Control.Monad.Fix      (MonadFix)
-import           Control.Monad.Identity (Identity (..), void)
-
-import           Data.Proxy             (Proxy (..))
+import           Data.Dependent.Map     (DMap, GCompare)
+import           Data.Functor.Misc      (Const2 (..))
+import           Control.Monad.Identity (Identity (..))
 import           Data.Kind              (Type)
 
 
