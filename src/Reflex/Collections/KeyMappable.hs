@@ -18,7 +18,6 @@ module Reflex.Collections.KeyMappable
    KeyMappable (..)
   ) where
 
-import           Data.Dependent.Map     (DMap, GCompare)
 import           Data.Kind              (Type)
 
 import qualified Data.Map as M
