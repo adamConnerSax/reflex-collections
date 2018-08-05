@@ -64,9 +64,9 @@ type PatchSeqC f a = PatchSequenceable (SeqType f a) (SeqPatchType f a)
 -- NB: incrementalToDynamic applies the patch to the original so the Diff type here
 -- (or, really, whatever makePatchSeq turns it into), must be consistent.
 listHoldWithKeyGeneral :: forall t m f v a. ( R.Adjustable t m
-                                              , R.MonadHold t m
-                                              , ToPatchType f 
-                                              , PatchSeqC f a)
+                                            , R.MonadHold t m
+                                            , ToPatchType f 
+                                            , PatchSeqC f a)
   => f v -> R.Event t (Diff f v) -> (Key f -> v -> m a) -> m (R.Dynamic t (f a))
 listHoldWithKeyGeneral c0 c' h = do
   let pf = Proxy :: Proxy f
@@ -98,50 +98,50 @@ listWithKeyGeneral' toInitialPlusKeyDiffEvent vals mkChild = do
 
 
 -- | Create a dynamically-changing set of Event-valued widgets.
-listWithKeyGeneral :: forall t m f v a. ( R.Adjustable t m
-                                        , R.PostBuild t m
-                                        , MonadFix m
-                                        , R.MonadHold t m
-                                        , ToPatchType f  -- for the listHold
-                                        , PatchSeqC f a  -- for the listHold
-                                        , Diffable f (Diff f)
-                                        , Monoid (f v)
-                                        , Functor (Diff f)
-                                        , HasFan f
-                                        , FanInKey f ~ Key f)
+listWithKeyGeneral :: ( R.Adjustable t m
+                      , R.PostBuild t m
+                      , MonadFix m
+                      , R.MonadHold t m
+                      , ToPatchType f  -- for the listHold
+                      , PatchSeqC f a  -- for the listHold
+                      , Diffable f (Diff f)
+                      , Monoid (f v)
+                      , Functor (Diff f)
+                      , HasFan f
+                      , FanInKey f ~ Key f)
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
 listWithKeyGeneral = listWithKeyGeneral' hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent
 
 
 -- | Generalizes "listViewWithKey" which is a special case of listWithKey for Events.  The extra constraints are needed because
 -- this uses all the machinery of sequencing (DMaps) twice: once for the inner listWithKey and then again for the merging of events.
-listViewWithKeyGeneral' ::  forall t m f v a. ( R.Adjustable t m
-                                              , R.PostBuild t m
-                                              , R.MonadHold t m
-                                              , ToPatchType f 
-                                              , PatchSeqC f a
-                                              , PatchSeqC f (R.Event t a) 
-                                              , ReflexSequenceable (SeqType f a)
-                                              , HasFan f 
-                                              , FanInKey f ~ Key f)
+listViewWithKeyGeneral' ::  ( R.Adjustable t m
+                            , R.PostBuild t m
+                            , R.MonadHold t m
+                            , ToPatchType f 
+                            , PatchSeqC f a
+                            , PatchSeqC f (R.Event t a) 
+                            , ReflexSequenceable (SeqType f a)
+                            , HasFan f 
+                            , FanInKey f ~ Key f)
   => (R.Dynamic t (f v) -> m (f v, R.Event t (Diff f v)))
   -> R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (f a))
 listViewWithKeyGeneral' toEv vals mkChild =
   R.switch . R.current . fmap mergeOver <$> listWithKeyGeneral' toEv vals mkChild
 
 
-listViewWithKeyGeneral ::  forall t m f v a. ( R.Adjustable t m
-                                             , R.PostBuild t m
-                                             , R.MonadHold t m
-                                             , MonadFix m
-                                             , ToPatchType f
-                                             , PatchSeqC f a
-                                             , PatchSeqC f (R.Event t a) 
-                                             , ReflexSequenceable (SeqType f a) 
-                                             , Diffable f (Diff f)
-                                             , Monoid (f v)
-                                             , HasFan f
-                                             , FanInKey f ~ Key f)
+listViewWithKeyGeneral ::  ( R.Adjustable t m
+                           , R.PostBuild t m
+                           , R.MonadHold t m
+                           , MonadFix m
+                           , ToPatchType f
+                           , PatchSeqC f a
+                           , PatchSeqC f (R.Event t a) 
+                           , ReflexSequenceable (SeqType f a) 
+                           , Diffable f (Diff f)
+                           , Monoid (f v)
+                           , HasFan f
+                           , FanInKey f ~ Key f)
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (f a))
 listViewWithKeyGeneral = listViewWithKeyGeneral' hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent
 
@@ -175,20 +175,20 @@ listWithKeyShallowDiffGeneral initialVals valsChanged mkChild = do
 
 
 -- | Create a dynamically-changing set of widgets, one of which is selected at any time.
-selectViewListWithKeyGeneral :: forall t m f v a. ( R.Adjustable t m
-                                                  , MonadFix m
-                                                  , R.MonadHold t m
-                                                  , R.PostBuild t m
-                                                  , Foldable f -- for toList
-                                                  , ToPatchType f  -- for the listHold
-                                                  , PatchSeqC f a -- for the listHold
-                                                  , PatchSeqC f (R.Event t (Key f, a)) -- for the listHold
-                                                  , Diffable f (Diff f) -- for the listWithKeyGeneral
-                                                  , Monoid (f v)
-                                                  , Functor (Diff f)
-                                                  , HasFan f
-                                                  , FanInKey f ~ Key f
-                                                  , Ord (Key f))
+selectViewListWithKeyGeneral :: ( R.Adjustable t m
+                                , MonadFix m
+                                , R.MonadHold t m
+                                , R.PostBuild t m
+                                , Foldable f -- for toList
+                                , ToPatchType f  -- for the listHold
+                                , PatchSeqC f a -- for the listHold
+                                , PatchSeqC f (R.Event t (Key f, a)) -- for the listHold
+                                , Diffable f (Diff f) -- for the listWithKeyGeneral
+                                , Monoid (f v)
+                                , Functor (Diff f)
+                                , HasFan f
+                                , FanInKey f ~ Key f
+                                , Ord (Key f))
   => R.Dynamic t (Key f)          -- ^ Current selection key
   -> R.Dynamic t (f v)      -- ^ Dynamic container of values
   -> (Key f -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -- ^ Function to create a widget for a given key from Dynamic value and Dynamic Bool indicating if this widget is currently selected
@@ -240,16 +240,16 @@ sampledDiffableDynamicToInitialPlusKeyDiffEvent vals = do
 
 -- NB: This only works in non-recursive widgets.  But that may be enough.
 -- But that may be a fit with something like "(Enum k, Bounded k) => k -> v", which has no empty state.
-sampledListWithKey :: forall t m f v a. ( R.Adjustable t m
-                                        , R.PostBuild t m
-                                        , MonadFix m
-                                        , R.MonadHold t m
-                                        , ToPatchType f  -- for the listHold
-                                        , PatchSeqC f a -- for the listHold
-                                        , Diffable f (Diff f)
-                                        , Functor (Diff f)
-                                        , HasFan f
-                                        , FanInKey f ~ Key f)
+sampledListWithKey :: ( R.Adjustable t m
+                      , R.PostBuild t m
+                      , MonadFix m
+                      , R.MonadHold t m
+                      , ToPatchType f  -- for the listHold
+                      , PatchSeqC f a -- for the listHold
+                      , Diffable f (Diff f)
+                      , Functor (Diff f)
+                      , HasFan f
+                      , FanInKey f ~ Key f)
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
 sampledListWithKey vals mkChild = listWithKeyGeneral' sampledDiffableDynamicToInitialPlusKeyDiffEvent vals mkChild
 
