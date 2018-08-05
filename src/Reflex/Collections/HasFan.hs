@@ -36,51 +36,51 @@ import qualified Data.HashMap.Strict    as HM
 import           Data.Array             (Array, Ix)
 
 
-class HasFan (f :: Type -> Type) v where
+class HasFan (f :: Type -> Type) where
   type FanInKey f :: Type
-  type FanSelKey f v :: Type -> Type
+  type FanSelKey f :: Type -> Type -> Type
   makeSelKey :: Proxy f -> Proxy v -> FanInKey f -> FanSelKey f v v
-  doFan :: R.Reflex t => Proxy v -> R.Event t (f v) -> R.EventSelector t (FanSelKey f v)
+  doFan :: R.Reflex t => R.Event t (f v) -> R.EventSelector t (FanSelKey f v)
 
-instance Ord k => HasFan (Map k) v where
+instance Ord k => HasFan (Map k) where
   type FanInKey (Map k) = k
-  type FanSelKey (Map k) v = Const2 k v
+  type FanSelKey (Map k) = Const2 k
   makeSelKey _ _ = Const2
-  doFan _ = R.fan . fmap (toSeqType (Proxy :: Proxy k))
+  doFan = R.fan . fmap toSeqType
 
-instance (Ord k, Hashable k) => HasFan (HashMap k) v where
+instance (Ord k, Hashable k) => HasFan (HashMap k) where
   type FanInKey (HashMap k) = k
-  type FanSelKey (HashMap k) v = Const2 k v
+  type FanSelKey (HashMap k) = Const2 k
   makeSelKey _ _ = Const2
-  doFan _ = R.fan . fmap (toSeqType (Proxy :: Proxy k))
+  doFan = R.fan . fmap toSeqType
 
-instance HasFan IntMap v where
+instance HasFan IntMap where
   type FanInKey IntMap = Int
-  type FanSelKey IntMap v = Const2 Int v
+  type FanSelKey IntMap = Const2 Int
   makeSelKey _ _ = Const2
-  doFan _ = R.fan . fmap (toSeqType (Proxy :: Proxy Int))
+  doFan = R.fan . fmap toSeqType
 
-instance Ord k => HasFan (MapDiff (Map k)) v where
+instance Ord k => HasFan (MapDiff (Map k)) where
   type FanInKey (MapDiff (Map k)) = k
-  type FanSelKey (MapDiff (Map k)) v = Const2 k v
+  type FanSelKey (MapDiff (Map k)) = Const2 k
   makeSelKey _ _ = Const2
-  doFan _ = R.fan . fmap (toSeqType (Proxy :: Proxy k) . (M.mapMaybe id)  . getCompose)
+  doFan = R.fan . fmap (toSeqType . (M.mapMaybe id)  . getCompose)
 
-instance (Ord k, Hashable k) => HasFan (MapDiff (HashMap k)) v where
+instance (Ord k, Hashable k) => HasFan (MapDiff (HashMap k)) where
   type FanInKey (MapDiff (HashMap k)) = k
-  type FanSelKey (MapDiff (HashMap k)) v = Const2 k v
+  type FanSelKey (MapDiff (HashMap k)) = Const2 k
   makeSelKey _ _ = Const2
-  doFan _ = R.fan . fmap (toSeqType (Proxy :: Proxy k) . (HM.mapMaybe id)  . getCompose)
+  doFan = R.fan . fmap (toSeqType . (HM.mapMaybe id)  . getCompose)
 
-instance HasFan (MapDiff IntMap) v where
+instance HasFan (MapDiff IntMap) where
   type FanInKey (MapDiff IntMap) = Int
-  type FanSelKey (MapDiff IntMap) v = Const2 Int v
+  type FanSelKey (MapDiff IntMap) = Const2 Int
   makeSelKey _ _ = Const2
-  doFan _ = R.fan . fmap (toSeqType (Proxy :: Proxy Int) . (IM.mapMaybe id)  . getCompose)
+  doFan = R.fan . fmap (toSeqType . (IM.mapMaybe id)  . getCompose)
 
-instance (Ix k, Ord k) => HasFan (Array k) v where
+instance (Ix k, Bounded k, Ord k) => HasFan (Array k) where
   type FanInKey (Array k) = k
-  type FanSelKey (Array k) v = Const2 k v
+  type FanSelKey (Array k) = Const2 k
   makeSelKey _ _ = Const2
-  doFan _ = R.fan . fmap (toSeqType (Proxy :: Proxy k))
+  doFan = R.fan . fmap toSeqType
 

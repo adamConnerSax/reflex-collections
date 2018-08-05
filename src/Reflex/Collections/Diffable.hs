@@ -15,12 +15,11 @@
 #endif
 module Reflex.Collections.Diffable
   (
-    HasEmpty(..)
-  , Diffable(..)
+    Diffable(..)
   , toDiff
   ) where
 
-import           Reflex.Collections.ToPatchType (ArrayDiff(..), MapDiff) 
+import           Reflex.Collections.KeyedCollection (ArrayDiff(..), MapDiff) 
 
 import           Data.Proxy             (Proxy (..))
 import           Data.Kind              (Type)
@@ -29,7 +28,7 @@ import           Data.Align             (Align(..))
 import           Data.These             (These(..))
 import           Data.Foldable          (foldl')
 import           Data.Maybe             (isNothing)
-
+import           Data.Monoid            (Monoid(mempty))
 
 import           Data.Map               (Map)
 import qualified Data.Map               as M
@@ -44,25 +43,9 @@ import qualified Data.Array          as A
 
 
 -- | Given a diffable collection that has an empty state, we can make a diff such that "applyDiff empty . toDiff = id"  
-toDiff :: (HasEmpty (f v), Diffable f df) => f v -> df v
-toDiff = flip diffNoEq empty
-
-
--- | Not all containers have a zero state.
--- Maps and lists do, but a total map (Array) doesn't unless the element type does
--- Should this be something more connected to Diff?
-class HasEmpty a where
-  empty :: a
-
-instance Ord k => HasEmpty (Map k v) where
-  empty = M.empty
-
-instance Hashable k => HasEmpty (HashMap k v) where
-  empty = HM.empty
-
-instance HasEmpty (IntMap v) where
-  empty = IM.empty
-
+-- We are using the existence of a monoid instance to indicate a meaningful empty state (mempty)
+toDiff :: (Monoid (f v), Diffable f df) => f v -> df v
+toDiff = flip diffNoEq mempty
 
 
 -- encapsulates the ability to diff two containers and then apply the diff to regain the original
