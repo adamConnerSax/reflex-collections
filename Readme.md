@@ -6,24 +6,23 @@ This library reimplements `listHoldWithKey`, `listWithKey`, `listViewWithKey`, a
 more polymorphic.  The originals operate only on `Ord k => Data.Map.Map` these will operate on `Map`, `IntMap` and `HashMap` and, if using only `listHoldWithKey`, will also 
 work on `(Enum k, Bounded k, Ix k) => Data.Array k`, a sort of "Total Map", holding a value of some sort for every `k`
 
-Along the way, we get more polymorphic versions of `Reflex.merge` (`Reflex.Collections.Collections.mergeOver`) and `distributeMapOverDynPure` (`Reflex.Collections.Collections.distributeOverDynPure`).
+Along the way, we get more polymorphic versions of `Reflex.mergeMap` (`Reflex.Collections.Collections.mergeOver`) and `distributeMapOverDynPure` (`Reflex.Collections.Collections.distributeOverDynPure`).
 
 Several ideas are handled more abstractly, via typeclasses:
 
 1. A typeclass supporting efficient sequencing (`m (t a) -> t (m a)`) for the `Reflex.Event` and `Reflex.Dynamic` types: `Reflex.Collections.Sequenceable.ReflexSequenceable` (with an instance for `DMap`)
 2. A typeclass with a collection and patch type supporting efficient sequencing of a collection and patch as well as reconstruction of that pair into a `Reflex.Dynamic`: `Reflex.Collections.Sequenceable.PatchSequenceable` (with an instance for the pair `DMap` and `PatchDMap`)
 3. A class for collection types which can be converted to and from the sequenceable type: `Reflex.Collections.ToPatchType` (with instances for `Ord k => Map k`, `Hashable k => HashMap k`, `IntMap` and `Ix k => Array k`)
-4. A small utility class representing the ability to map over the collection using the key, whatever that means for the collection: `Reflex.Collections.KeyMappable.KeyMappable` (with instances for `Ord k => Map k`, `Hashable k => HashMap k`, `IntMap` and `Ix k => Array k`)
+4. A small utility class representing the ability to map over the collection using the key, whatever that means for the collection: `Reflex.Collections.KeyedCollection.KeyedCollection` (with instances for `Ord k => Map k`, `Hashable k => HashMap k`, `IntMap` and `Ix k => Array k`)
 5. A class supporting efficient event fans: `Reflex.Collections.HasFan.HasFan` (with instances for `Ord k => Map k`, `Hashable k => HashMap k`, `IntMap` and `Ix k => Array k`)
 6. A class representing the difference between two collections: `Reflex.Collections.Diffable.Diffable` (with instances for `Ord k => Map k`, `Hashable k => HashMap k`, `IntMap` and `Ix k => Array k`)
-7. A class for collections which have an empty state (which allows the "bootstrapping" of a new dynamic from an input dynamic using a static initial empty state and diffs): `Reflex.Collections.Diffable.HasEmpty` (with instances for `Ord k => Map k`, `Hashable k => HashMap k`, `IntMap`but *not* `Array k`).
 
-To add a new collection type directly supported by these functions, you need instances of `ToPatchType` (which requires `KeyMappable`) and `Diffable` (for `listHoldWithKey`) and `HasFan` and `HasEmpty` (for `listWithKey`, `listViewWithKey`, and `selectViewListWithKey).  This should be straightforward for any keyed collection and also possible for things like lists and trees once you decide what should play the role of the key. Something like an index for a list and a path to a node for a tree.
+To add a new collection type directly supported by these functions, you need instances of `ToPatchType` (which requires `KeyedCollection`) and `Diffable` (for `listHoldWithKey`) and `HasFan` (for `listWithKey`, `listViewWithKey`, and `selectViewListWithKey`).  This should be straightforward for any keyed collection and also possible for things like lists and trees once you decide what should play the role of the key. Something like an index for a list and a path to a node for a tree.  For  `listWithKey`, `listViewWithKey`, and `selectViewListWithKey` you will also need your collection type to have a monoid instance.  This is so a dynamic can be bootstrapped from an empty collection plus events of diffs.  Monoid.mempty is used for the empty collection.
 
 ----
 
 Building:
-This is set up with reflex-platform. SO on any machine with nix:
+This is set up with reflex-platform (as a git submodule). So on any machine with nix:
 ```
 git clone https://github.com/adamConnerSax/reflex-collections
 cd reflex-collections
