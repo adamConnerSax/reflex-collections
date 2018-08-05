@@ -32,7 +32,7 @@ library
   exposed-modules:
                   Reflex.Collections.Collections
                   Reflex.Collections.Sequenceable
-                  Reflex.Collections.KeyMappable
+                  Reflex.Collections.KeyedCollection
                   Reflex.Collections.ToPatchType
                   Reflex.Collections.HasFan
                   Reflex.Collections.Diffable

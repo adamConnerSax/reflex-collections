@@ -41,15 +41,14 @@ instance GCompare k => ReflexSequenceable (DMap k) where
 -- patchPairToDynamic is a sort of inverse, turning a static d containing values and events with patches to it, new values at some keys,
 -- and returns an adjustable monad containing a Dynamic of a value containing d.
 -- |
-class ( R.Patch (pd k Identity)
-      , R.PatchTarget (pd k Identity) ~ d k Identity)
-  => PatchSequenceable (d :: (Type -> Type) -> (Type -> Type) -> Type)
-                  (pd :: (Type -> Type) -> (Type -> Type) -> Type)  (k :: Type -> Type) where
-  sequenceWithPatch :: R.Adjustable t m => d k m -> R.Event t (pd k m) -> m (d k Identity, R.Event t (pd k Identity))
-  patchPairToDynamic :: (R.MonadHold t m, R.Reflex t) =>d k Identity -> R.Event t (pd k Identity) -> m (R.Dynamic t (d k Identity))
+class ( R.Patch (pd Identity)
+      , R.PatchTarget (pd Identity) ~ d Identity)
+  => PatchSequenceable (d :: (Type -> Type) -> Type) (pd :: (Type -> Type) -> Type)  where
+  sequenceWithPatch :: R.Adjustable t m => d m -> R.Event t (pd m) -> m (d Identity, R.Event t (pd Identity))
+  patchPairToDynamic :: (R.MonadHold t m, R.Reflex t) => d Identity -> R.Event t (pd Identity) -> m (R.Dynamic t (d Identity))
 
 -- | DMaps are our prime example of something sequenceable
-instance (GCompare (Const2 k a), Ord k) => PatchSequenceable DMap PatchDMap (Const2 k a) where
+instance (GCompare (Const2 k a), Ord k) => PatchSequenceable (DMap (Const2 k a)) (PatchDMap (Const2 k a)) where
   sequenceWithPatch :: R.Adjustable t m
                     => DMap (Const2 k a) m
                     -> R.Event t (PatchDMap (Const2 k a) m)

@@ -109,11 +109,14 @@ buildLBEMapLWK editOneValueWK mapDyn0 = do
   mapOfDyn <- listWithKeyGeneral mapDyn0 editW -- Dynamic t (M.Map k (Dynamic t (Maybe v)))
   return $ M.mapMaybe id <$> (join $ distributeMapOverDynPure <$> mapOfDyn)
 
-totalArrayBuildLBELWK :: forall t m k v. (A.Ix k, WidgetConstraints t m k v) => FieldWidgetWithKey t m k v -> ArrayEditF t m k v
+totalArrayBuildLBELWK :: forall t m k v. ( A.Ix k
+                                         , Bounded k
+                                         , WidgetConstraints t m k v)
+                      => FieldWidgetWithKey t m k v -> ArrayEditF t m k v
 totalArrayBuildLBELWK editOneValueWK totalArrayDyn0 = do
   let editW k vDyn =  el "br" blank >> fieldWidgetDyn (editOneValueWK k) (Just vDyn)
   arrayOfDyn <- sampledListWithKey totalArrayDyn0 editW -- Dynamic t (A.Array k (Dynamic t (Maybe v)))
-  let x = join $ distributeOverDynPure (Proxy :: Proxy k) <$> arrayOfDyn
+  let x = join $ distributeOverDynPure <$> arrayOfDyn
   return $ sequence <$> x
 
 -- NB: ListViewWithKey returns an Event t (M.Map k v) but it contains only the keys for which things have changed
