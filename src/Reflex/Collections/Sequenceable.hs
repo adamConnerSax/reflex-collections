@@ -30,16 +30,16 @@ import           Data.Proxy             (Proxy (..))
 import           Data.Kind              (Type)
 
 
--- | This class carries the ability to do an efficient event merge
+-- | This class carries the ability to do an efficient event merge and also sequence a collection of Dynamics.
 -- "Merge a collection of events.  The resulting event will occur if at least one input event is occuring
 -- and will contain all simultaneously occurring events."
 class ReflexSequenceable (dk :: (Type -> Type) -> Type) where
   mergeEvents :: R.Reflex t => dk (R.Event t) -> R.Event t (dk Identity)
-  traverseDynamic :: R.Reflex t => dk (R.Dynamic t) -> R.Dynamic t (dk Identity)
+  sequenceDynamic :: R.Reflex t => dk (R.Dynamic t) -> R.Dynamic t (dk Identity)
 
 instance GCompare k => ReflexSequenceable (DMap k) where
   mergeEvents = R.merge
-  traverseDynamic = R.distributeDMapOverDynPure
+  sequenceDynamic = R.distributeDMapOverDynPure
 
 -- | This class carries the ability to sequence patches in the way of MonadAdjust And then turn the result into a Dynamic.
 -- sequenceWithPatch takes a static d containing adjustable (m a), e.g., widgets, and event carrying patches, that is

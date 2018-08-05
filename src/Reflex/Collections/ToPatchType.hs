@@ -61,7 +61,7 @@ distributeOverDynPure :: forall t f k v. ( R.Reflex t
   => Proxy k -> f (R.Dynamic t v) -> R.Dynamic t (f v)
 distributeOverDynPure pk =
   let pv = Proxy :: Proxy v
-  in fmap (fromSeqType pk pv) . traverseDynamic . (withFunctorToSeqType pk pv)
+  in fmap (fromSeqType pk pv) . sequenceDynamic . (withFunctorToSeqType pk pv)
 
 -- | Generalizes "mergeMap" to anything with ToPatchType where the Patches are Sequenceable.
 mergeOver :: forall t f k v. ( R.Reflex t
