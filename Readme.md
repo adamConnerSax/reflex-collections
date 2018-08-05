@@ -35,7 +35,7 @@ cabal new-build all
 
 Running the demo:
 `cabal new-build all` should finish with a `Linking...` line.  Run that executable and it should spawn a browser pointing at the demo.  If not, you may need to comment out the line in
-`app/Main.hs` containing `spawnProcess` and then rebuild, run the exe andmanually open a browser tab pointing to `localhost:XXX` where XXX is the port specified in `Main.hs`
+`app/Main.hs` containing `spawnProcess` and then rebuild, run the exe and manually open a browser tab pointing to `localhost:XXX` where XXX is the port specified in `Main.hs`
 
 
 
