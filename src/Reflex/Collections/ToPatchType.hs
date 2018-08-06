@@ -33,7 +33,7 @@ import qualified Reflex as R
 import           Data.Dependent.Map      (DMap, DSum ((:=>)))
 import qualified Data.Dependent.Map      as DM
 import           Reflex.Patch            (PatchDMap (..))
-import           Data.Functor.Compose    (Compose, getCompose)
+import           Data.Functor.Compose    (getCompose)
 import           Data.Functor.Misc       (ComposeMaybe (..), Const2 (..),
                                           dmapToMap, mapWithFunctorToDMap)
 import           Data.Functor.Identity   (Identity(..))                 
@@ -46,9 +46,7 @@ import           Data.IntMap (IntMap)
 import qualified Data.IntMap as IM
 import           Data.Hashable           (Hashable)
 import           Data.HashMap.Strict     (HashMap)
-import qualified Data.HashMap.Strict     as HM
 import           Data.Array (Array, Ix)
-import qualified Data.Array as A
 
 
 
@@ -77,6 +75,9 @@ mergeOver fEv =
 -- can be optimized for collections that have to/from ascending lists
 keyedCollectionToDMapWithFunctor :: (KeyedCollection f, Ord (Key f)) => f (g v) -> DMap (Const2 (Key f) v) g
 keyedCollectionToDMapWithFunctor = DM.fromList . fmap (\(k, v) -> Const2 k :=> v) . toKeyValueList
+
+keyedCollectionToDMap :: (KeyedCollection f, Ord (Key f)) => f v -> DMap (Const2 (Key f) v) Identity
+keyedCollectionToDMap = keyedCollectionToDMapWithFunctor . fmap Identity
 
 dmapToKeyedCollection :: KeyedCollection f => DMap (Const2 (Key f) v) Identity -> f v
 dmapToKeyedCollection = fromKeyValueList . fmap (\(Const2 k :=> Identity v) -> (k, v)) . DM.toList 
