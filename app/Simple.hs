@@ -43,26 +43,41 @@ do
   let port :: Int = 3702
   pHandle <- spawnProcess "open" ["http://localhost:" ++ show port]
   run port testWidget
-
+-}
 type ReflexConstraints t m = (MonadWidget t m, DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m, DomBuilderSpace m ~ GhcjsDomSpace)
 type WidgetConstraints t m k v = (ReflexConstraints t m, Show v, Read v, Ord k, Show k, Read k)
 
 data MyEnum = A | B | C | D deriving (Show, Read, Enum, Eq, Ord, Bounded, A.Ix)
 
-fieldWidgetDyn' :: (ReflexConstraints t m, Show v) => (T.Text -> Maybe v) -> (TWidget t m -> TWidget t m) -> FieldWidgetDyn t m v
-fieldWidgetDyn' parse f mvDyn = do
+-- takes a Dynamic t a and makes it an event but also traces and notifies of postbuild
+traceDynAsEv::PostBuild t m=>(a->String)->Dynamic t a->m (Event t a)
+traceDynAsEv f dyn = do
+  postbuild <- getPostBuild
+  let f' prefix x = prefix ++ f x
+      pbEv = traceEventWith (f' "postbuild-") $ tagPromptlyDyn dyn postbuild
+      upEv = traceEventWith (f' "update-") $ updated dyn
+  return $ leftmost [upEv, pbEv]
+
+
+fieldWidgetDynM :: (ReflexConstraints t m, Show v) => (T.Text -> Maybe v) -> Maybe (Dynamic t v)-> m (Dynamic t (Maybe v))
+fieldWidgetDynM parse mvDyn = do
   inputEv' <- maybe (return never) (traceDynAsEv (\x->"editWidgetDyn' input: v=" ++ show x)) mvDyn -- traced so we can see when widgets are updated vs rebuilt vs left alone
   let inputEv = T.pack . show <$> inputEv'
       config = TextInputConfig "text" "" inputEv (constDyn M.empty)
-  valDyn <- _textInput_value <$> f textInput config
+  valDyn <- _textInput_value <$> textInput config
   return $ parse <$> valDyn
 
+fieldWidgetDyn :: (ReflexConstraints t m, Show v) => (T.Text -> Maybe v) -> Dynamic t v -> m (Event t v)
+fieldWidgetDyn parse vDyn = do
+  inputEv' <- traceDynAsEv (\x->"editWidgetDyn' input: v=" ++ show x) vDyn -- traced so we can see when widgets are updated vs rebuilt vs left alone
+  let inputEv = T.pack . show <$> inputEv'
+      config = TextInputConfig "text" "" inputEv (constDyn M.empty)
+  fmapMaybe parse . _textInput_input <$> textInput config -- Dynamic t (Maybe v)
+
+{-
 
 pairWidget :: ReflexConstraints t m => String -> Dynamic t Int -> m (Dynamic t Int)
 pairWidget s iDyn = do
-  pb <- getPostBuild
-  let inputEv = leftmost [updated iDyn, tag pb iDyn]
-      config = TextInputConfig "text" "" inputEv (constDyn M.empty)
   el "span" $ text (T.unpack s)
 
 
@@ -337,13 +352,6 @@ dynAsEv::PostBuild t m=>Dynamic t a -> m (Event t a)
 dynAsEv d = (\x->leftmost [updated d, tagPromptlyDyn d x]) <$> getPostBuild
 
 
-traceDynAsEv::PostBuild t m=>(a->String)->Dynamic t a->m (Event t a)
-traceDynAsEv f dyn = do
-  postbuild <- getPostBuild
-  let f' prefix x = prefix ++ f x
-      pbEv = traceEventWith (f' "postbuild-") $ tagPromptlyDyn dyn postbuild
-      upEv = traceEventWith (f' "update-") $ updated dyn
-  return $ leftmost [upEv, pbEv]
 
 
 hiddenCSS::M.Map T.Text T.Text
