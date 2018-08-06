@@ -9,7 +9,7 @@
 {-# LANGUAGE RecursiveDo           #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TupleSections         #-}
-
+import           GHCJS.DOM.Types                  (JSM)
 import           Language.Javascript.JSaddle.Warp (run)
 import           Reflex
 import           Reflex.Dom                       hiding (mainWidget, run)
@@ -18,7 +18,9 @@ import           Reflex.Dom.Old                   (MonadWidget)
 
 import           Control.Monad                    (join)
 import           Control.Monad.Fix                (MonadFix)
+import           Data.Bool                        (bool)
 import           Data.Functor.Compose             (Compose (..))
+
 
 import qualified Data.Array                       as A
 import qualified Data.Map                         as M
@@ -37,28 +39,26 @@ import           Reflex.Collections.Collections
 
 -- NB: This is just for warp.
 main::IO ()
-main = return ()
-{-
-do
+main = do
   let port :: Int = 3702
   pHandle <- spawnProcess "open" ["http://localhost:" ++ show port]
   run port testWidget
--}
+
 type ReflexConstraints t m = (MonadWidget t m, DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m, DomBuilderSpace m ~ GhcjsDomSpace)
 type WidgetConstraints t m k v = (ReflexConstraints t m, Show v, Read v, Ord k, Show k, Read k)
 
 data MyEnum = A | B | C | D deriving (Show, Read, Enum, Eq, Ord, Bounded, A.Ix)
 
 -- takes a Dynamic t a and makes it an event but also traces and notifies of postbuild
-traceDynAsEv::PostBuild t m=>(a->String)->Dynamic t a->m (Event t a)
+traceDynAsEv :: PostBuild t m => (a -> String) -> Dynamic t a -> m (Event t (Bool,a))
 traceDynAsEv f dyn = do
   postbuild <- getPostBuild
   let f' prefix x = prefix ++ f x
-      pbEv = traceEventWith (f' "postbuild-") $ tagPromptlyDyn dyn postbuild
-      upEv = traceEventWith (f' "update-") $ updated dyn
+      pbEv = fmap (True,) $ traceEventWith (f' "postbuild-") $ tagPromptlyDyn dyn postbuild
+      upEv = fmap (False,) $ traceEventWith (f' "update-") $ updated dyn
   return $ leftmost [upEv, pbEv]
 
-
+{-
 fieldWidgetDynM :: (ReflexConstraints t m, Show v) => (T.Text -> Maybe v) -> Maybe (Dynamic t v)-> m (Dynamic t (Maybe v))
 fieldWidgetDynM parse mvDyn = do
   inputEv' <- maybe (return never) (traceDynAsEv (\x->"editWidgetDyn' input: v=" ++ show x)) mvDyn -- traced so we can see when widgets are updated vs rebuilt vs left alone
@@ -66,60 +66,53 @@ fieldWidgetDynM parse mvDyn = do
       config = TextInputConfig "text" "" inputEv (constDyn M.empty)
   valDyn <- _textInput_value <$> textInput config
   return $ parse <$> valDyn
+-}
 
-fieldWidgetDyn :: (ReflexConstraints t m, Show v) => (T.Text -> Maybe v) -> Dynamic t v -> m (Event t v)
-fieldWidgetDyn parse vDyn = do
+rebuildStyle, updateStyle, restingStyle :: M.Map T.Text T.Text
+rebuildStyle = ("style" =: "background-color:#D98880")
+updateStyle  = ("style" =: "background-color:#F9E79F")
+restingStyle = ("style" =: "background-color:#7DCEA0")
+
+fieldWidgetEv :: (ReflexConstraints t m, Show v) => (T.Text -> Maybe v) -> Dynamic t v -> m (Event t v)
+fieldWidgetEv parse vDyn = do
   inputEv' <- traceDynAsEv (\x->"editWidgetDyn' input: v=" ++ show x) vDyn -- traced so we can see when widgets are updated vs rebuilt vs left alone
-  let inputEv = T.pack . show <$> inputEv'
-      config = TextInputConfig "text" "" inputEv (constDyn M.empty)
+  let inputEv = T.pack . show . snd <$> inputEv'
+  updatedDelayedEv <- delay 1.0 inputEv'
+  let styleIs = bool updateStyle rebuildStyle
+  attrs <- foldDyn const M.empty $ leftmost [styleIs . fst <$> inputEv', restingStyle <$ updatedDelayedEv]
+  let config = TextInputConfig "text" "" inputEv attrs
   fmapMaybe parse . _textInput_input <$> textInput config -- Dynamic t (Maybe v)
 
-{-
-
-pairWidget :: ReflexConstraints t m => String -> Dynamic t Int -> m (Dynamic t Int)
-pairWidget s iDyn = do
-  el "span" $ text (T.unpack s)
 
 
+pairWidget :: ReflexConstraints t m => T.Text -> Dynamic t Int -> m (Event t Int)
+pairWidget t iDyn = do
+  el "span" $ text t
+  el "span" $ fieldWidgetEv (readMaybe . T.unpack) iDyn
 
-testWidget::JSM()
+
+testWidget :: JSM()
 testWidget = mainWidget $ do
-  let simpleWidget = FWDyn $ fieldWidgetDyn' (readMaybe . T.unpack)  (restrictWidget' blurOrEnter)
-      textWidget = FWDyn $ fieldWidgetDyn' Just (restrictWidget' blurOrEnter)
-      keyedWidget = addFixedKeyToWidget id simpleWidget
-      arrayWidget = addFixedKeyToWidget (T.pack . show) $ FWDyn $ fieldWidgetDyn' (readMaybe . T.unpack) (restrictWidget' blurOrEnter)
-      x0 :: M.Map T.Text Int = M.fromList [("A",1),("B",2),("C",3)]
+  let x0 :: M.Map T.Text Int = M.fromList [("A",1),("B",2),("C",3)]
       a0 :: A.Array MyEnum Int = A.listArray (minBound, maxBound) [1,2,3,4]
-  el "h1" $ text "reflex-dom \"listView\" Function Family Examples"
+  el "h1" $ text "reflex-collections \"listView\" Function Family Examples"
   smallBreak
-  el "p" $ text "These editor widgets are each made using one of the listView family of functions.  I used each to build the same basic widget for editing a map.  The basic editor is then extended to support removing elements from the map and then adding them as well.  It turns out this can be done generically: using value widgets returning (Just v) for an edit and Nothing for a delete, and tacking an additional widget on to handle the addition of new elements."
-  el "p" $ text "I include all 3 variations for the listWithKey version and then only the edit, delete and add versions for the other listView functions."
-  el "p" $ text "Each widget's output is sent to the next as input in order to test that dynamic input is correctly handled."
+  el "h3" $ text "Initial collection directly (mapping the widget over the map as a list, tagging the events with their keys, sequencing, making back into a map and then running mergeMap)."
+  mapEv0 <- fmap (mergeMap . M.fromList) . sequence . fmap (\(k,v) -> (k,) <$> pairWidget k (constDyn v)) $ M.toList x0
+  mapDyn0 <- foldDyn M.union x0 mapEv0
+  dynText $ fmap (T.pack . show) mapDyn0
 
   bigBreak
-  el "h2" $ text "Using ListWithKey"
-  res1 <- el "div" $ buildLBEMapLWK keyedWidget $ constDyn x0
-  res2 <- el "div" $ buildLBEMapWithDelete buildLBEMapLWK keyedWidget res1
-  res3 <- el "div" $ buildLBEMapWithAdd (buildLBEMapWithDelete buildLBEMapLWK keyedWidget) textWidget simpleWidget res2
 
-  el "h2" $ text "Using ListViewWithKey"
-  res4 <- buildLBEMapWithAdd (buildLBEMapWithDelete buildLBEMapLVWK keyedWidget) textWidget simpleWidget res3
 
-  el "h2" $ text "Using ListViewWithKeyShallowDiff"
-  res5 <- buildLBEMapWithAdd (buildLBEMapWithDelete buildLBEMapLVWKSD keyedWidget) textWidget simpleWidget res4
 
-  el "h2" $ text "Using SelectViewListWithKey"
-  res6 <- buildLBEMapWithAdd (buildLBEMapWithDelete buildLBEMapSVLWK keyedWidget) textWidget simpleWidget res5
-  smallBreak
-  el "span" $ text "result: "
-  _ <- buildLBEMapLWK (addFixedKeyToWidget id (FWDyn $ readOnlyFieldWidget)) res6
-
-  bigBreak
-  el "p" $ text "Simple editor for a total array (an array indexed by a bounded enum with all values present"
-  totalArrayRes <- totalArrayBuildLBELWK arrayWidget $ constDyn a0
-  dynText $ fmap (T.pack . show) totalArrayRes
-
+  el "h3" $ text "Same thing using listViewWithKey."
+  mapEv1 <- listViewWithKeyGeneral (constDyn x0) pairWidget
+  mapDyn1 <- foldDyn M.union x0 mapEv1
+  dynText $ fmap (T.pack . show) mapDyn1
   return ()
+
+  el "h3" $ text "But the real advantage of the listView functions is minimizing rebuilds when the input changes.  So now we feed the output of the plain version into the plain version again."
 
 
 smallBreak::DomBuilder t m=>m ()
@@ -128,7 +121,7 @@ smallBreak =   el "br" blank >> el "br" blank
 bigBreak::DomBuilder t m=>m()
 bigBreak =   el "br" blank >> el "h1" (text "") >> el "br" blank
 
-
+{-
 type EditF t m k v = Dynamic t (M.Map k v)->m (Dynamic t (M.Map k v))
 type ArrayEditF t m k v = Dynamic t (A.Array k v)->m (Dynamic t (Maybe (A.Array k v)))
 
