@@ -107,7 +107,7 @@ mapApplyDiff ::
   -> (forall a b. (f a -> f b -> f a)) -- difference
   -> (forall a. ((a -> Bool) -> f a -> f a)) -- filter
   -> (forall a b. ((a -> Maybe b) -> f a -> f b)) -- mapMaybe
-  -> Compose f Maybe v
+  -> MapDiff f v
   -> f v
   -> f v
 mapApplyDiff mapUnion mapDifference mapFilter mapMaybe patch old =  
