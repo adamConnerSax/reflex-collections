@@ -9,7 +9,8 @@
 {-# LANGUAGE RecursiveDo           #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE DefaultSignatures     #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
 #endif
@@ -51,12 +52,13 @@ import           Data.Array (Array, Ix)
 
 
 
-toSeqType :: (Functor f, ToPatchType f) => f v -> SeqType f v Identity
+toSeqType :: (Functor f, SeqTypes f v, ToPatchType f) => f v -> SeqType f v Identity
 toSeqType = withFunctorToSeqType . fmap Identity
 
 -- | Generalize distributeMapOverDynPure
 distributeOverDynPure :: ( R.Reflex t
-                         , ToPatchType f 
+                         , ToPatchType f
+                         , SeqTypes f v
                          , PatchSequenceable (SeqType f v) (SeqPatchType f v)
                          , ReflexSequenceable (SeqType f v))
   => f (R.Dynamic t v) -> R.Dynamic t (f v)
@@ -65,12 +67,13 @@ distributeOverDynPure = fmap fromSeqType . sequenceDynamic . withFunctorToSeqTyp
 -- | Generalizes "mergeMap" to anything with ToPatchType where the Patches are Sequenceable.
 mergeOver :: forall t f v. ( R.Reflex t
                            , ToPatchType f
+                           , SeqTypes f v
                            , PatchSequenceable (SeqType f v) (SeqPatchType f v)
                            , ReflexSequenceable (SeqType f v))
   => f (R.Event t v) -> R.Event t (f v)
 mergeOver fEv =
   let id2 = const id :: (k -> R.Event t v -> R.Event t v)
-  in fmap fromSeqType . mergeEvents $ toSeqTypeWithFunctor id2 fEv
+  in fmap fromSeqType . mergeEvents $ functorMappedToSeqType id2 fEv
 
 -- generic to and fromDMap for Keyed collections
 -- can be optimized for collections that have to/from ascending lists
@@ -103,18 +106,42 @@ class KeyedCollection f => ToPatchType (f :: Type -> Type) where
   withFunctorToSeqType :: SeqTypes f v => Functor g => f (g v) -> SeqType f v g
   fromSeqType :: SeqTypes f a => SeqType f a Identity -> f a
   
-  toSeqTypeWithFunctor :: SeqTypes f u => Functor g => (Key f -> v -> g u) -> f v -> SeqType f u g
-  toSeqTypeWithFunctor h = withFunctorToSeqType . mapWithKey h 
+  --toSeqTypeWithFunctor :: SeqTypes f u => Functor g => (Key f -> v -> g u) -> f v -> SeqType f u g
+  --toSeqTypeWithFunctor h = withFunctorToSeqType . mapWithKey h 
 
   makePatchSeq :: (Functor g, SeqTypes f u) => Proxy f -> (Key f -> v -> g u) -> Diff f v -> SeqPatchType f u g
 
 
-newtype DMappable f v = DMappable { unDMappable :: f v }
+functorMappedToSeqType :: (SeqTypes f u, ToPatchType f) => Functor g => (Key f -> v -> g u) -> f v -> SeqType f u g
+functorMappedToSeqType h = withFunctorToSeqType . mapWithKey h 
+
+newtype DMappable f v = DMappable { unDMappable :: f v } deriving (Functor)
+
+
+instance KeyedCollection f => KeyedCollection (DMappable f) where
+  type Key (DMappable f) = Key f
+  type Diff (DMappable f) = Diff f
+  mapWithKey h = DMappable . mapWithKey h . unDMappable
+  toKeyValueList = toKeyValueList . unDMappable
+  fromKeyValueList = DMappable . fromKeyValueList
 
 instance DMapIso f => SeqTypes (DMappable f) v where
   type SeqType (DMappable f) v = DMap (DMapKey f v) 
   type SeqPatchType (DMappable f) v = PatchDMap (DMapKey f v)
 
+
+instance DMapIso f => DMapIso (DMappable f) where
+  type DMapKey (DMappable f) = DMapKey f
+  toDMapWithFunctor = toDMapWithFunctor . unDMappable
+  fromDMap = DMappable . fromDMap
+
+instance DiffToPatchDMap f => DiffToPatchDMap (DMappable f) where
+  makePatch = makePatch 
+
+instance (KeyedCollection f, DMapIso f, DiffToPatchDMap f) => ToPatchType (DMappable f) where
+  withFunctorToSeqType = toDMapWithFunctor
+  fromSeqType = fromDMap
+  makePatchSeq = makePatch
   
 
 {-
