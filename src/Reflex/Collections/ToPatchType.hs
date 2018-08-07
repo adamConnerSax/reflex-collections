@@ -27,6 +27,7 @@ module Reflex.Collections.ToPatchType
 
 import           Reflex.Collections.KeyedCollection (KeyedCollection(..), MapDiff, ArrayDiff(..))
 import           Reflex.Collections.Sequenceable (ReflexSequenceable(..), PatchSequenceable(..))
+import           Reflex.Collections.DMapIso (DMapIso(..), DiffToPatchDMap(..))
 
 import qualified Reflex as R
 
@@ -91,22 +92,32 @@ makePatchFromMapDiff _ h =
   PatchDMap . keyedCollectionToDMapWithFunctor . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) . getCompose                     
 
 -- | Type families for the sequenceable and patch types.  Always DMap for now
-type family SeqType (f :: Type -> Type) (v :: Type) :: ((Type -> Type) -> Type)
-type family SeqPatchType (f :: Type -> Type) (v :: Type) :: ((Type -> Type) -> Type)
-
+class SeqTypes (f :: Type -> Type) (v :: Type) where
+  type SeqType f v  :: (Type -> Type) -> Type
+  type SeqPatchType f v :: (Type -> Type) -> Type
 
 -- This class has the capabilities to translate f v and its difftype into types
 -- that are sequenceable, and then bring the original type back
 -- This requires that the Diff type be mapped to the correct type for diffing at the sequenceable level (e.g., as a DMap).
 class KeyedCollection f => ToPatchType (f :: Type -> Type) where
-  withFunctorToSeqType :: Functor g => f (g v) -> SeqType f v g
-  fromSeqType :: SeqType f a Identity -> f a
+  withFunctorToSeqType :: SeqTypes f v => Functor g => f (g v) -> SeqType f v g
+  fromSeqType :: SeqTypes f a => SeqType f a Identity -> f a
   
-  toSeqTypeWithFunctor :: Functor g => (Key f -> v -> g u) -> f v -> SeqType f u g
+  toSeqTypeWithFunctor :: SeqTypes f u => Functor g => (Key f -> v -> g u) -> f v -> SeqType f u g
   toSeqTypeWithFunctor h = withFunctorToSeqType . mapWithKey h 
 
-  makePatchSeq :: Functor g => Proxy f -> (Key f -> v -> g u) -> Diff f v -> SeqPatchType f u g
+  makePatchSeq :: (Functor g, SeqTypes f u) => Proxy f -> (Key f -> v -> g u) -> Diff f v -> SeqPatchType f u g
 
+
+newtype DMappable f v = DMappable { unDMappable :: f v }
+
+instance DMapIso f => SeqTypes (DMappable f) v where
+  type SeqType (DMappable f) v = DMap (DMapKey f v) 
+  type SeqPatchType (DMappable f) v = PatchDMap (DMapKey f v)
+
+  
+
+{-
 type instance SeqType (Map k) v = DMap (Const2 k v)
 type instance SeqPatchType (Map k) v = PatchDMap (Const2 k v)
 
@@ -131,9 +142,6 @@ instance ToPatchType IntMap where
   makePatchSeq _ h = PatchDMap .  intMapWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) . getCompose
   fromSeqType = IM.fromDistinctAscList . fmap (\(Const2 k :=> Identity v) -> (k, v)) . DM.toAscList
 
--- this one is more efficient since it uses the ascending list
-intMapWithFunctorToDMap :: Functor g => IntMap (g v) -> DMap (Const2 Int v) g
-intMapWithFunctorToDMap = DM.fromDistinctAscList . fmap (\(k, v) -> Const2 k :=> v) . IM.toAscList
 
 type instance SeqType (Array k) v = DMap (Const2 k v)
 type instance SeqPatchType (Array k) v = PatchDMap (Const2 k v)
@@ -142,3 +150,4 @@ instance Ix k => ToPatchType (Array k) where
   withFunctorToSeqType = keyedCollectionToDMapWithFunctor --arrayWithFunctorToDMap
   fromSeqType = dmapToKeyedCollection
   makePatchSeq _ h (ArrayDiff ad) = PatchDMap .  DM.fromList $ fmap (\(k, v) -> Const2 k :=> (ComposeMaybe . Just $ h k v)) ad
+-}
