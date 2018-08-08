@@ -24,15 +24,15 @@ module Reflex.Collections.ToPatchType
   , functorMappedToSeqType
   , distributeOverDynPure
   , mergeOver
-  , DMappable(..)
+--  , DMappable(..)
   , MapDiff
   , ArrayDiff(..)
   ) where
 
-import           Reflex.Collections.KeyedCollection (KeyedCollection(..), MapDiff, ArrayDiff(..))
+import           Reflex.Collections.KeyedCollection (KeyedCollection(..))
 import           Reflex.Collections.Sequenceable (ReflexSequenceable(..), PatchSequenceable(..))
 import           Reflex.Collections.DMapIso (DMapIso(..), DiffToPatchDMap(..))
-import           Reflex.Collections.Diffable (Diffable(..))
+import           Reflex.Collections.Diffable (Diffable(..), MapDiff, ArrayDiff(..))
 
 import qualified Reflex as R
 
@@ -115,21 +115,23 @@ class KeyedCollection f => ToPatchType (f :: Type -> Type) where
 functorMappedToSeqType :: (SeqTypes f u, ToPatchType f) => Functor g => (Key f -> v -> g u) -> f v -> SeqType f u g
 functorMappedToSeqType h = withFunctorToSeqType . mapWithKey h 
 
+{-
 newtype DMappable f v = DMappable { unDMappable :: f v } deriving (Functor, Foldable)
 
 instance KeyedCollection f => KeyedCollection (DMappable f) where
   type Key (DMappable f) = Key f
-  type Diff (DMappable f) = Diff f
   mapWithKey h = DMappable . mapWithKey h . unDMappable
   toKeyValueList = toKeyValueList . unDMappable
   fromKeyValueList = DMappable . fromKeyValueList
 
-instance (KeyedCollection f, df ~ Diff f, Diffable f df) => Diffable (DMappable f) df where
+instance (KeyedCollection f, Diffable f) => Diffable (DMappable f) where
+  type Diff (DMappable f) = Diff f
+  mapDiffWithKey _ = mapDiffWithKey (Proxy :: Proxy f) -- use version from Diffable f since Diff is the same 
   diffNoEq old new = diffNoEq (unDMappable old) (unDMappable new) 
   diff old new = diff (unDMappable old) (unDMappable new)
   applyDiff patch old = DMappable $ applyDiff patch (unDMappable old)
   diffOnlyKeyChanges old new = diffOnlyKeyChanges (unDMappable old) (unDMappable new)
-  editDiffLeavingDeletes = editDiffLeavingDeletes
+  editDiffLeavingDeletes _ = editDiffLeavingDeletes (Proxy :: Proxy f)
 
 instance Monoid (f v) => Monoid (DMappable f v) where
   mempty = DMappable mempty
@@ -139,18 +141,19 @@ instance DMapIso f => SeqTypes (DMappable f) v where
   type SeqType (DMappable f) v = DMap (DMapKey f v) 
   type SeqPatchType (DMappable f) v = PatchDMap (DMapKey f v)
 
-instance DMapIso f => DMapIso (DMappable f) where
-  type DMapKey (DMappable f) = DMapKey f
-  toDMapWithFunctor = toDMapWithFunctor . unDMappable
-  fromDMap = DMappable . fromDMap
+--instance DMapIso f => DMapIso (DMappable f) where
+--  type DMapKey (DMappable f) = DMapKey f
+--  toDMapWithFunctor = toDMapWithFunctor . unDMappable
+--  fromDMap = DMappable . fromDMap
 
-instance DiffToPatchDMap f => DiffToPatchDMap (DMappable f) where
-  makePatch = makePatch 
+--instance DiffToPatchDMap f => DiffToPatchDMap (DMappable f) where
+--  makePatch _ = makePatch (Proxy :: Proxy f)
 
 instance (KeyedCollection f, DMapIso f, DiffToPatchDMap f) => ToPatchType (DMappable f) where
-  withFunctorToSeqType = toDMapWithFunctor
-  fromSeqType = fromDMap
-  makePatchSeq = makePatch
+  withFunctorToSeqType = toDMapWithFunctor . unDMappable
+  fromSeqType = DMappable . fromDMap
+  makePatchSeq _ = makePatch (Proxy :: Proxy f)
+-}
 
 -- these are all boring, just using DMapIso and DiffToPatchDMap
 -- but we can't instance them directly without overlapping instances for anything else

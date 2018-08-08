@@ -18,24 +18,25 @@ module Reflex.Collections.HasFan
     HasFan(..)
   ) where
 
-import Reflex.Collections.ToPatchType (toSeqType, MapDiff, DMappable(..))
-import Reflex.Collections.KeyedCollection (KeyedCollection(Key))
+--import Reflex.Collections.ToPatchType (DMappable(..))
+import Reflex.Collections.Diffable (ArrayDiff(..), MapDiff)
 import Reflex.Collections.DMapIso (DMapIso(..))
 
 import qualified Reflex                 as R
 import           Data.Functor.Misc      (Const2 (..))
+
+import qualified Data.Dependent.Map     as DM
 import           Data.Proxy             (Proxy (..))
 import           Data.Kind              (Type)
-import           Data.Functor.Compose  (Compose (..))
-import           Data.Dependent.Map    (GCompare)
+import           Data.Functor.Compose   (Compose (..))
+import           Data.Dependent.Map     (GCompare)
+import           Data.Functor.Identity  (Identity(..))
+import           Data.Witherable        (Filterable(..))
 
 import           Data.Map               (Map)
-import qualified Data.Map               as M
 import           Data.IntMap            (IntMap)
-import qualified Data.IntMap            as IM
 import           Data.Hashable          (Hashable)
 import           Data.HashMap.Strict    (HashMap)
-import qualified Data.HashMap.Strict    as HM
 import           Data.Array             (Array, Ix)
 
 
@@ -43,54 +44,49 @@ class HasFan (f :: Type -> Type) where
   type FanInKey f :: Type
   type FanSelKey f :: Type -> Type -> Type
   makeSelKey :: Proxy f -> Proxy v -> FanInKey f -> FanSelKey f v v
-  doFan :: R.Reflex t => R.Event t (f v) -> R.EventSelector t (FanSelKey f v)
+  doFan :: GCompare (FanSelKey f v) => R.Reflex t => R.Event t (f v) -> R.EventSelector t (FanSelKey f v)
 
-instance HasFan f => HasFan (DMappable f) where
-  type FanInKey (DMappable f) = FanInKey f
-  type FanSelKey (DMappable f) = FanSelKey f
-  makeSelKey = makeSelKey
-  doFan = doFan . fmap unDMappable
-
+-- these all flow from DMapIso but we can't instance them directly that way otherwise we will get overlapping instances
+-- and we need them for the more general versions, which don't have a DMapIso constraint
 instance Ord k => HasFan (Map k) where
   type FanInKey (Map k) = k
   type FanSelKey (Map k) = Const2 k
   makeSelKey _ _ = Const2
-  doFan = R.fan . fmap (toSeqType . DMappable)
+  doFan = R.fan . fmap (toDMapWithFunctor . fmap Identity)
 
 instance (Ord k, Hashable k) => HasFan (HashMap k) where
   type FanInKey (HashMap k) = k
   type FanSelKey (HashMap k) = Const2 k
   makeSelKey _ _ = Const2
-  doFan = R.fan . fmap (toSeqType . DMappable)
+  doFan = R.fan . fmap (toDMapWithFunctor . fmap Identity)
 
 instance HasFan IntMap where
   type FanInKey IntMap = Int
   type FanSelKey IntMap = Const2 Int
   makeSelKey _ _ = Const2
-  doFan = R.fan . fmap (toSeqType . DMappable)
+  doFan = R.fan . fmap (toDMapWithFunctor . fmap Identity)
 
-instance Ord k => HasFan (MapDiff (Map k)) where
-  type FanInKey (MapDiff (Map k)) = k
-  type FanSelKey (MapDiff (Map k)) = Const2 k
-  makeSelKey _ _ = Const2
-  doFan = R.fan . fmap (toSeqType . DMappable . (M.mapMaybe id)  . getCompose)
-
-instance (Ord k, Hashable k) => HasFan (MapDiff (HashMap k)) where
-  type FanInKey (MapDiff (HashMap k)) = k
-  type FanSelKey (MapDiff (HashMap k)) = Const2 k
-  makeSelKey _ _ = Const2
-  doFan = R.fan . fmap (toSeqType . DMappable . (HM.mapMaybe id)  . getCompose)
-
-instance HasFan (MapDiff IntMap) where
-  type FanInKey (MapDiff IntMap) = Int
-  type FanSelKey (MapDiff IntMap) = Const2 Int
-  makeSelKey _ _ = Const2
-  doFan = R.fan . fmap (toSeqType . DMappable . (IM.mapMaybe id)  . getCompose)
+instance (HasFan f, Filterable f, DMapIso f, DMapKey f ~ FanSelKey f) => HasFan (MapDiff f) where
+  type FanInKey (MapDiff f) = FanInKey f
+  type FanSelKey (MapDiff f) = FanSelKey f
+  makeSelKey _ = makeSelKey (Proxy :: Proxy f)
+  doFan = R.fan . fmap (toDMapWithFunctor . fmap Identity . (mapMaybe id)  . getCompose)
 
 instance (Ix k, Ord k) => HasFan (Array k) where
   type FanInKey (Array k) = k
   type FanSelKey (Array k) = Const2 k
   makeSelKey _ _ = Const2
-  doFan = R.fan . fmap (toSeqType . DMappable)
+  doFan = R.fan . fmap (toDMapWithFunctor . fmap Identity) 
+
+instance (Ix k, Ord k) => HasFan (ArrayDiff k) where
+  type FanInKey (ArrayDiff k) = k
+  type FanSelKey (ArrayDiff k) = Const2 k
+  makeSelKey _ _ = Const2
+  doFan = R.fan . fmap (DM.fromList . fmap (\(k,v) -> Const2 k DM.:=> Identity v) . unArrayDiff)
+
+
+
+
+
 
 

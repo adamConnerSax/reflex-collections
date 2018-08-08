@@ -19,8 +19,8 @@ module Reflex.Collections.DMapIso
   , DiffToPatchDMap(..)
   ) where
 
-import           Reflex.Collections.KeyedCollection (KeyedCollection(..), MapDiff, ArrayDiff (..))
-
+import           Reflex.Collections.KeyedCollection (KeyedCollection(..))
+import           Reflex.Collections.Diffable (Diffable(Diff), MapDiff, ArrayDiff(..))
 
 import qualified Reflex as R
 
@@ -96,7 +96,7 @@ instance Ix k => DMapIso (Array k) where
   fromDMap = dmapToKeyedCollection
 
 -- This class seems like it's purely for overloading.
-class (DMapIso f, KeyedCollection f) => DiffToPatchDMap (f :: Type -> Type) where
+class (DMapIso f, KeyedCollection f, Diffable f) => DiffToPatchDMap (f :: Type -> Type) where
   makePatch :: Functor g => Proxy f -> (Key f -> v -> g u) -> Diff f v -> PatchDMap (DMapKey f u) g
 
 instance Ord k => DiffToPatchDMap (Map k) where

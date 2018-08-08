@@ -31,7 +31,8 @@ library
   hs-source-dirs: src
   exposed-modules:
                   Reflex.Collections.Collections
-                  Reflex.Collections.CollectionsDM                  
+                  Reflex.Collections.CollectionsDM
+                  Reflex.Collections.DMappable
                   Reflex.Collections.DMapIso
                   Reflex.Collections.Sequenceable
                   Reflex.Collections.KeyedCollection
@@ -57,6 +58,7 @@ library
                      , hashable
                      , safe
                      , unordered-containers >= 0.2.8.0
+                     , witherable >= 0.2
   if impl(ghcjs)
     build-depends:     ghcjs-base
 
