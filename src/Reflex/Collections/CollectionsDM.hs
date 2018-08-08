@@ -14,26 +14,16 @@
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
 #endif
-module Reflex.Collections.Collections
+module Reflex.Collections.CollectionsDM
   (
-    listHoldWithKeyGeneral
-  , listWithKeyGeneral
-  , sampledListWithKey
-  , listViewWithKeyGeneral
-  , listWithKeyShallowDiffGeneral
-  , selectViewListWithKeyGeneral
-  , listViewWithKeyGeneral'
-  , listWithKeyGeneral'
-  , toSeqType
-  , mergeOver
-  , distributeOverDynPure
-  , hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent
-  , sampledDiffableDynamicToInitialPlusKeyDiffEvent -- Use with caution!! May cause problems in recursive contexts
-  , HasFan(..)
-  , Diffable(..)
-  , PatchSequenceable(..)
-  , KeyedCollection (..)
-  , ToPatchType(..)
+    listHoldWithKeyDM
+--  , listWithKeyDM
+--  , listViewWithKeyDM
+--  , listWithKeyShallowDiffDM
+--  , selectViewListWithKeyDM
+--  , toSeqType
+--  , mergeOverDM
+--  , distributeOverDynPureDM
   ) where
 
 
@@ -42,21 +32,35 @@ import           Reflex.Collections.HasFan          (HasFan (..))
 import           Reflex.Collections.KeyedCollection (KeyedCollection (..))
 import           Reflex.Collections.Sequenceable    (PatchSequenceable (..),
                                                      ReflexSequenceable (..))
-import           Reflex.Collections.ToPatchType     (SeqTypes (..),
+import           Reflex.Collections.ToPatchType     (DMappable (..),
+                                                     SeqTypes (..),
                                                      ToPatchType (..),
                                                      distributeOverDynPure,
                                                      functorMappedToSeqType,
                                                      mergeOver, toSeqType)
+
+import           Reflex.Collections.Collections     (listHoldWithKeyGeneral,
+                                                     listViewWithKeyGeneral,
+                                                     listWithKeyGeneral,
+                                                     listWithKeyShallowDiffGeneral,
+                                                     selectViewListWithKeyGeneral)
+import           Reflex.Collections.DMapIso         (DMapIso (DMapKey),
+                                                     DiffToPatchDMap)
 
 import qualified Reflex                             as R
 
 import           Control.Monad                      (void)
 import           Control.Monad.Fix                  (MonadFix)
 import           Data.Foldable                      (Foldable, toList)
+import           Data.Functor.Misc                  (Const2)
 import           Data.Proxy                         (Proxy (..))
 
 
-type PatchSeqC f a = (SeqTypes f a, PatchSequenceable (SeqType f a) (SeqPatchType f a))
+--type PatchSeqC f a = (SeqTypes f a, PatchSequenceable (SeqType f a) (SeqPatchType f a))
+
+
+-- This constraint says that f is isomorphic to a DMap, that diffs of f can be mapped to DMaps with the same key and that that key is (Const2 k v)
+type DMapC f = (DMapIso f, DiffToPatchDMap f, Ord (Key f), DMapKey f ~ Const2 (Key f))
 
 -- | Sequenceable and ToPatch are enough for listHoldWithKey
 -- listHoldWithKey is an efficient collection management function if your input is a static initial state and events of updates.
@@ -64,21 +68,13 @@ type PatchSeqC f a = (SeqTypes f a, PatchSequenceable (SeqType f a) (SeqPatchTyp
 -- That 2nd point would be simpler if you could sample.
 -- NB: incrementalToDynamic applies the patch to the original so the Diff type here
 -- (or, really, whatever makePatchSeq turns it into), must be consistent.
-listHoldWithKeyGeneral :: forall t m f v a. ( R.Adjustable t m
-                                            , R.MonadHold t m
-                                            , ToPatchType f
-                                            , SeqTypes f v
-                                            , PatchSeqC f a)
+listHoldWithKeyDM :: forall t m f v a. ( R.Adjustable t m
+                                       , R.MonadHold t m
+                                       , DMapC f)
   => f v -> R.Event t (Diff f v) -> (Key f -> v -> m a) -> m (R.Dynamic t (f a))
-listHoldWithKeyGeneral c0 c' h = do
-  let pf = Proxy :: Proxy f
-      makePatchSeq' = makePatchSeq pf
-      dc0 = functorMappedToSeqType h c0
-      dc' = fmap (makePatchSeq' h) c'
-  (a0 ,a') <- sequenceWithPatch dc0 dc'
-  fmap fromSeqType <$> patchPairToDynamic a0 a'
+listHoldWithKeyDM fv diffEv = fmap (fmap unDMappable) . listHoldWithKeyGeneral (DMappable fv) diffEv
 
-
+{-
 -- These are all generalized over a function "(R.Dynamic t (f v) -> m (f v, R.Event t (Diff f k v)))"
 -- for the listWithKey and listWithKeyShallow diff we need to be able to fan events
 listWithKeyGeneral' :: forall t m f v a. ( R.Adjustable t m
@@ -264,7 +260,7 @@ sampledListWithKey vals mkChild = listWithKeyGeneral' sampledDiffableDynamicToIn
 
 
 
-
+-}
 -- Old Code
 {-
 -- | Create a dynamically-changing set of Event-valued widgets.

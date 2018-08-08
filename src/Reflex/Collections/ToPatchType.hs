@@ -19,7 +19,9 @@ module Reflex.Collections.ToPatchType
     SeqType
   , SeqPatchType
   , ToPatchType(..)
+  , SeqTypes(..)
   , toSeqType
+  , functorMappedToSeqType
   , distributeOverDynPure
   , mergeOver
   , DMappable(..)
@@ -106,18 +108,12 @@ class SeqTypes (f :: Type -> Type) (v :: Type) where
 class KeyedCollection f => ToPatchType (f :: Type -> Type) where
   withFunctorToSeqType :: SeqTypes f v => Functor g => f (g v) -> SeqType f v g
   fromSeqType :: SeqTypes f a => SeqType f a Identity -> f a
-  
-  --toSeqTypeWithFunctor :: SeqTypes f u => Functor g => (Key f -> v -> g u) -> f v -> SeqType f u g
-  --toSeqTypeWithFunctor h = withFunctorToSeqType . mapWithKey h 
-
   makePatchSeq :: (Functor g, SeqTypes f u) => Proxy f -> (Key f -> v -> g u) -> Diff f v -> SeqPatchType f u g
-
 
 functorMappedToSeqType :: (SeqTypes f u, ToPatchType f) => Functor g => (Key f -> v -> g u) -> f v -> SeqType f u g
 functorMappedToSeqType h = withFunctorToSeqType . mapWithKey h 
 
 newtype DMappable f v = DMappable { unDMappable :: f v } deriving (Functor)
-
 
 instance KeyedCollection f => KeyedCollection (DMappable f) where
   type Key (DMappable f) = Key f
@@ -143,39 +139,43 @@ instance (KeyedCollection f, DMapIso f, DiffToPatchDMap f) => ToPatchType (DMapp
   withFunctorToSeqType = toDMapWithFunctor
   fromSeqType = fromDMap
   makePatchSeq = makePatch
-  
 
-{-
-type instance SeqType (Map k) v = DMap (Const2 k v)
-type instance SeqPatchType (Map k) v = PatchDMap (Const2 k v)
+
+-- these are all boring, just using DMapIso and DiffToPatchDMap
+-- but we can't instance them directly without overlapping instances for anything else
+instance SeqTypes (Map k) v where
+  type SeqType (Map k) v = DMap (Const2 k v)
+  type SeqPatchType (Map k) v = PatchDMap (Const2 k v)
 
 instance Ord k => ToPatchType (Map k) where
-  withFunctorToSeqType = mapWithFunctorToDMap
-  makePatchSeq _ h = PatchDMap . mapWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) . getCompose
-  fromSeqType = dmapToMap
+  withFunctorToSeqType = toDMapWithFunctor
+  makePatchSeq = makePatch 
+  fromSeqType = fromDMap
 
-type instance SeqType (HashMap k) v = DMap (Const2 k v)
-type instance SeqPatchType (HashMap k) v = PatchDMap (Const2 k v)
+instance SeqTypes (HashMap k) v where
+  type SeqType (HashMap k) v = DMap (Const2 k v)
+  type SeqPatchType (HashMap k) v = PatchDMap (Const2 k v)
 
 instance (Ord k, Eq k, Hashable k) => ToPatchType (HashMap k) where
-  withFunctorToSeqType = keyedCollectionToDMapWithFunctor --hashMapWithFunctorToDMap
-  makePatchSeq = makePatchFromMapDiff
-  fromSeqType = dmapToKeyedCollection
+  withFunctorToSeqType = toDMapWithFunctor
+  makePatchSeq = makePatch
+  fromSeqType = fromDMap
 
-type instance SeqType IntMap v = DMap (Const2 Int v)
-type instance SeqPatchType IntMap v = PatchDMap (Const2 Int v)
+instance SeqTypes IntMap v where
+  type SeqType IntMap v = DMap (Const2 Int v)
+  type SeqPatchType IntMap v = PatchDMap (Const2 Int v)
 
 instance ToPatchType IntMap where
-  withFunctorToSeqType = intMapWithFunctorToDMap
-  makePatchSeq _ h = PatchDMap .  intMapWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) . getCompose
-  fromSeqType = IM.fromDistinctAscList . fmap (\(Const2 k :=> Identity v) -> (k, v)) . DM.toAscList
+  withFunctorToSeqType = toDMapWithFunctor
+  makePatchSeq = makePatch
+  fromSeqType = fromDMap
 
-
-type instance SeqType (Array k) v = DMap (Const2 k v)
-type instance SeqPatchType (Array k) v = PatchDMap (Const2 k v)
+instance SeqTypes (Array k) v where
+  type SeqType (Array k) v = DMap (Const2 k v)
+  type SeqPatchType (Array k) v = PatchDMap (Const2 k v)
 
 instance Ix k => ToPatchType (Array k) where
-  withFunctorToSeqType = keyedCollectionToDMapWithFunctor --arrayWithFunctorToDMap
-  fromSeqType = dmapToKeyedCollection
-  makePatchSeq _ h (ArrayDiff ad) = PatchDMap .  DM.fromList $ fmap (\(k, v) -> Const2 k :=> (ComposeMaybe . Just $ h k v)) ad
--}
+  withFunctorToSeqType = toDMapWithFunctor
+  fromSeqType = fromDMap
+  makePatchSeq = makePatch
+

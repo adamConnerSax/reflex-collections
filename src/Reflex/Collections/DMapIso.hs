@@ -60,7 +60,7 @@ dmapToKeyedCollectionWithFunctor = fromKeyValueList . fmap (\(Const2 k :=> gv) -
 dmapToKeyedCollection :: KeyedCollection f => DMap (Const2 (Key f) v) Identity -> f v
 dmapToKeyedCollection = fromKeyValueList . fmap (\(Const2 k :=> Identity v) -> (k, v)) . DM.toList 
 
-
+-- If we had Quantified Constraints, we might add (forall v. (GCompare (DMapKey f v))) to the constraints
 class KeyedCollection f => DMapIso (f :: Type -> Type) where
   type DMapKey f :: Type -> Type -> Type
   makeDMapKey :: Proxy f -> Key f -> DMapKey f v v 

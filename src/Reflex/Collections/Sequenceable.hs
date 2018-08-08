@@ -18,6 +18,8 @@ module Reflex.Collections.Sequenceable
 import qualified Reflex                 as R
 import           Reflex.Patch           (PatchDMap (..))
 
+import           Reflex.Collections.DMapIso (DMapIso (..))
+
 import           Data.Dependent.Map     (DMap, GCompare)
 import           Data.Functor.Misc      (Const2 (..))
 import           Control.Monad.Identity (Identity (..))
