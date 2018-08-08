@@ -18,7 +18,9 @@ module Reflex.Collections.HasFan
     HasFan(..)
   ) where
 
-import Reflex.Collections.ToPatchType (toSeqType, MapDiff)
+import Reflex.Collections.ToPatchType (toSeqType, MapDiff, DMappable)
+import Reflex.Collections.KeyedCollection (KeyedCollection(Key))
+import Reflex.Collections.DMapIso (DMapIso(..))
 
 import qualified Reflex                 as R
 import           Data.Functor.Misc      (Const2 (..))
@@ -42,6 +44,13 @@ class HasFan (f :: Type -> Type) where
   makeSelKey :: Proxy f -> Proxy v -> FanInKey f -> FanSelKey f v v
   doFan :: R.Reflex t => R.Event t (f v) -> R.EventSelector t (FanSelKey f v)
 
+instance DMapIso f => HasFan (DMappable f) where
+  type FanInKey (DMappable f) = Key f
+  type FanSelKey (DMappable f) = DMapKey f
+  makeSelKey pf _ = makeDMapKey pf
+  doFan = R.fan . fmap toSeqType
+
+{-
 instance Ord k => HasFan (Map k) where
   type FanInKey (Map k) = k
   type FanSelKey (Map k) = Const2 k
@@ -84,3 +93,4 @@ instance (Ix k, Ord k) => HasFan (Array k) where
   makeSelKey _ _ = Const2
   doFan = R.fan . fmap toSeqType
 
+-}

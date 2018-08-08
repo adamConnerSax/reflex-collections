@@ -61,23 +61,27 @@ dmapToKeyedCollection :: KeyedCollection f => DMap (Const2 (Key f) v) Identity -
 dmapToKeyedCollection = fromKeyValueList . fmap (\(Const2 k :=> Identity v) -> (k, v)) . DM.toList 
 
 
-class DMapIso (f :: Type -> Type) where
-  type DMapKey f :: Type -> Type -> Type 
+class KeyedCollection f => DMapIso (f :: Type -> Type) where
+  type DMapKey f :: Type -> Type -> Type
+  makeDMapKey :: Proxy f -> Key f -> DMapKey f v v 
   toDMapWithFunctor :: Functor g => f (g v) -> DMap (DMapKey f v) g
   fromDMap :: DMap (DMapKey f v) Identity -> f v
 
 instance Ord k => DMapIso (Map k) where
   type DMapKey (Map k) = Const2 k
+  makeDMapKey _ = Const2
   toDMapWithFunctor = mapWithFunctorToDMap
   fromDMap = dmapToMap
 
 instance (Eq k, Ord k, Hashable k) => DMapIso (HashMap k) where
   type DMapKey (HashMap k) = Const2 k
+  makeDMapKey _ = Const2
   toDMapWithFunctor = keyedCollectionToDMapWithFunctor
   fromDMap = dmapToKeyedCollection
 
 instance DMapIso (IntMap) where
   type DMapKey IntMap = Const2 Int
+  makeDMapKey _ = Const2
   toDMapWithFunctor = intMapWithFunctorToDMap
   fromDMap = IM.fromDistinctAscList . fmap (\(Const2 k :=> Identity v) -> (k, v)) . DM.toAscList
   
@@ -87,6 +91,7 @@ intMapWithFunctorToDMap = DM.fromDistinctAscList . fmap (\(k, v) -> Const2 k :=>
 
 instance Ix k => DMapIso (Array k) where
   type DMapKey (Array k) = Const2 k
+  makeDMapKey _ = Const2
   toDMapWithFunctor = keyedCollectionToDMapWithFunctor
   fromDMap = dmapToKeyedCollection
 

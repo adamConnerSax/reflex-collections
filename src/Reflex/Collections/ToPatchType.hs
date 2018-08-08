@@ -22,6 +22,7 @@ module Reflex.Collections.ToPatchType
   , toSeqType
   , distributeOverDynPure
   , mergeOver
+  , DMappable(..)
   , MapDiff
   , ArrayDiff(..)
   ) where
@@ -125,10 +126,10 @@ instance KeyedCollection f => KeyedCollection (DMappable f) where
   toKeyValueList = toKeyValueList . unDMappable
   fromKeyValueList = DMappable . fromKeyValueList
 
+
 instance DMapIso f => SeqTypes (DMappable f) v where
   type SeqType (DMappable f) v = DMap (DMapKey f v) 
   type SeqPatchType (DMappable f) v = PatchDMap (DMapKey f v)
-
 
 instance DMapIso f => DMapIso (DMappable f) where
   type DMapKey (DMappable f) = DMapKey f
