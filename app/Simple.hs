@@ -35,6 +35,7 @@ import           Text.Read                        (readMaybe)
 import           Safe                             (headMay)
 
 import           Reflex.Collections.Collections
+import           Reflex.Collections.CollectionsDM
 
 
 -- NB: This is just for warp.
@@ -68,7 +69,7 @@ testWidget = mainWidget $ do
   bigBreak
 
   el "h3" $ text "Now we feed it instead to listViewWithKey to show that the widgets are not rebuilt. But notice that *all* even when any 1 input changes. Can we fix that too?"
-  mapEv2 <- listViewWithKeyGeneral mapDyn0 pairWidget
+  mapEv2 <- listViewWithKeyDM mapDyn0 pairWidget
   mapDyn2 <- foldDyn M.union x0 mapEv2
   dynText $ fmap (T.pack . show) mapDyn2
 

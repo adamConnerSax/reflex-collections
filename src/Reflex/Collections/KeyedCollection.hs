@@ -41,6 +41,14 @@ class Functor f => KeyedCollection (f :: Type -> Type) where
 
 type MapDiff f = Compose f Maybe
 
+instance KeyedCollection f => KeyedCollection (MapDiff f) where
+  type Key (MapDiff f) = Key f
+  type Diff (MapDiff f) = Diff f
+  mapWithKey = undefined
+  mapDiffWithKey = undefined
+  toKeyValueList = undefined
+  fromKeyValueList = undefined
+
 mapDiffMapWithKey :: (forall c d. ((k -> c -> d) -> f c -> f d)) -> (k -> a -> b) -> MapDiff f a -> MapDiff f b
 mapDiffMapWithKey mwk h =
   let g k = fmap (h k)
@@ -74,6 +82,14 @@ newtype ArrayDiff k v = ArrayDiff { unArrayDiff :: [(k,v)] }
 
 instance Functor (ArrayDiff k) where
   fmap f = ArrayDiff . fmap (\(k,v) -> (k,f v)) . unArrayDiff
+
+instance KeyedCollection (ArrayDiff k) where
+  type Key (ArrayDiff k) = k
+  type Diff (ArrayDiff k) = ArrayDiff k
+  mapWithKey = undefined
+  mapDiffWithKey = undefined
+  toKeyValueList = undefined
+  fromKeyValueList = undefined
 
 instance A.Ix k => KeyedCollection (A.Array k) where
   type Key (A.Array k) = k
