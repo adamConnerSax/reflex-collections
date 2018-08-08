@@ -70,16 +70,16 @@ instance KeyedCollection IM.IntMap where
   toKeyValueList = IM.toAscList
   fromKeyValueList = IM.fromList
 
-newtype ArrayDiff k v = ArrayDiff { diff :: [(k,v)] }
+newtype ArrayDiff k v = ArrayDiff { unArrayDiff :: [(k,v)] }
 
 instance Functor (ArrayDiff k) where
-  fmap f = ArrayDiff . fmap (\(k,v) -> (k,f v)) . diff
+  fmap f = ArrayDiff . fmap (\(k,v) -> (k,f v)) . unArrayDiff
 
 instance A.Ix k => KeyedCollection (A.Array k) where
   type Key (A.Array k) = k
   type Diff (A.Array k) = ArrayDiff k
   mapWithKey = arrayMapWithKey
-  mapDiffWithKey _ h = ArrayDiff . fmap (\(k,v) -> (k, h k v)) . diff
+  mapDiffWithKey _ h = ArrayDiff . fmap (\(k,v) -> (k, h k v)) . unArrayDiff
   toKeyValueList = A.assocs
   fromKeyValueList = arrayFromKeyValueList -- NB: this will be undefined at any key in the range missing from the list
 

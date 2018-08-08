@@ -32,6 +32,7 @@ module Reflex.Collections.ToPatchType
 import           Reflex.Collections.KeyedCollection (KeyedCollection(..), MapDiff, ArrayDiff(..))
 import           Reflex.Collections.Sequenceable (ReflexSequenceable(..), PatchSequenceable(..))
 import           Reflex.Collections.DMapIso (DMapIso(..), DiffToPatchDMap(..))
+import           Reflex.Collections.Diffable (Diffable(..))
 
 import qualified Reflex as R
 
@@ -44,6 +45,7 @@ import           Data.Functor.Misc       (ComposeMaybe (..), Const2 (..),
 import           Data.Functor.Identity   (Identity(..))                 
 import           Data.Proxy              (Proxy (..))
 import           Data.Kind               (Type)
+import           Data.Monoid             (Monoid(..))
 
 import           Data.Map (Map)
 --import qualified Data.Map as M
@@ -113,7 +115,7 @@ class KeyedCollection f => ToPatchType (f :: Type -> Type) where
 functorMappedToSeqType :: (SeqTypes f u, ToPatchType f) => Functor g => (Key f -> v -> g u) -> f v -> SeqType f u g
 functorMappedToSeqType h = withFunctorToSeqType . mapWithKey h 
 
-newtype DMappable f v = DMappable { unDMappable :: f v } deriving (Functor)
+newtype DMappable f v = DMappable { unDMappable :: f v } deriving (Functor, Foldable)
 
 instance KeyedCollection f => KeyedCollection (DMappable f) where
   type Key (DMappable f) = Key f
@@ -122,7 +124,17 @@ instance KeyedCollection f => KeyedCollection (DMappable f) where
   toKeyValueList = toKeyValueList . unDMappable
   fromKeyValueList = DMappable . fromKeyValueList
 
+instance (KeyedCollection f, df ~ Diff f, Diffable f df) => Diffable (DMappable f) df where
+  diffNoEq old new = diffNoEq (unDMappable old) (unDMappable new) 
+  diff old new = diff (unDMappable old) (unDMappable new)
+  applyDiff patch old = DMappable $ applyDiff patch (unDMappable old)
+  diffOnlyKeyChanges old new = diffOnlyKeyChanges (unDMappable old) (unDMappable new)
+  editDiffLeavingDeletes = editDiffLeavingDeletes
 
+instance Monoid (f v) => Monoid (DMappable f v) where
+  mempty = DMappable mempty
+  mappend a b = DMappable $ mappend (unDMappable a) (unDMappable b) 
+    
 instance DMapIso f => SeqTypes (DMappable f) v where
   type SeqType (DMappable f) v = DMap (DMapKey f v) 
   type SeqPatchType (DMappable f) v = PatchDMap (DMapKey f v)
@@ -139,7 +151,6 @@ instance (KeyedCollection f, DMapIso f, DiffToPatchDMap f) => ToPatchType (DMapp
   withFunctorToSeqType = toDMapWithFunctor
   fromSeqType = fromDMap
   makePatchSeq = makePatch
-
 
 -- these are all boring, just using DMapIso and DiffToPatchDMap
 -- but we can't instance them directly without overlapping instances for anything else
