@@ -6,6 +6,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
 #endif
@@ -25,8 +26,11 @@ import           Data.Functor.Misc      (Const2 (..))
 import           Control.Monad.Identity (Identity (..))
 import           Data.Kind              (Type)
 import           Data.IntMap            (IntMap)
-import Data.Functor.Compose (Compose(..), getCompose)
-
+import           Data.Functor.Compose   (Compose(..), getCompose)
+import           Data.Semigroup         (Semigroup(..),stimesIdempotentMonoid)
+import           Data.Monoid            (Monoid)
+import           Data.Foldable          (Foldable)
+import           Data.Traversable       (Traversable)
 
 -- | This class carries the ability to do an efficient event merge and also sequence a collection of Dynamics.
 -- "Merge a collection of events.  The resulting event will occur if at least one input event is occuring
@@ -68,25 +72,49 @@ instance (GCompare (Const2 k a), Ord k) => PatchSequenceable (DMap (Const2 k a))
   patchPairToDynamic a0 a' = R.incrementalToDynamic <$> R.holdIncremental a0 a'
 
 
-newtype ComposedIntMap a f = ComposedIntMap { unCI :: Compose IntMap f a }
+newtype ComposedIntMap a f = ComposedIntMap { unCI :: Compose IntMap f a } 
 newtype ComposedPatchIntMap a f = ComposedPatchIntMap { unCPI :: Compose PatchIntMap f a }
 
-instance Patch (ComposedPatchIntMap a Identity) where
-  type PatchTarget (ComposedPatchIntMap a Identity) = ComposedIntMap a Identity
-  
+fromComposed :: Functor f => Compose f Identity a -> f a
+fromComposed = fmap runIdentity . getCompose
 
+toComposed :: Functor f => f a -> Compose f Identity a
+toComposed = Compose . fmap Identity
+
+instance Monoid (ComposedPatchIntMap a Identity) where
+  mempty = ComposedPatchIntMap . toComposed $ mempty
+  mappend (ComposedPatchIntMap a) (ComposedPatchIntMap b) = ComposedPatchIntMap . toComposed $ mappend (fromComposed a) (fromComposed b)
+
+instance R.Patch (ComposedPatchIntMap a Identity) where
+  type PatchTarget (ComposedPatchIntMap a Identity) = ComposedIntMap a Identity
+  apply (ComposedPatchIntMap p) (ComposedIntMap v) = ComposedIntMap . toComposed <$> R.apply (fromComposed p) (fromComposed v)
+
+
+
+instance Semigroup (ComposedPatchIntMap a Identity) where
+  (ComposedPatchIntMap a) <> (ComposedPatchIntMap b) = ComposedPatchIntMap . toComposed $ (fromComposed a) <> (fromComposed b)
+   -- PatchMap is idempotent, so stimes n is id for every n
+#if MIN_VERSION_semigroups(0,17,0)
+  stimes = stimesIdempotentMonoid
+#else
+  times1p n x = case compare n 0 of
+    LT -> error "stimesIdempotentMonoid: negative multiplier"
+    EQ -> mempty
+    GT -> x
+#endif
   
-instance PatchSequenceable (ComposedIntMap a) (ComposedPatchIntMap a) where
-  {-
+instance PatchSequenceable (ComposedIntMap a) (ComposedPatchIntMap a) where  
   sequenceWithPatch :: R.Adjustable t m
-                    => ComposedIntMap m a
-                    -> R.Event t (ComposedPatchIntMap m a)
-                    -> m (ComposedIntMap Identity a, R.Event t (ComposedPatchIntMap Identity a))
---  sequenceWithPatch ci cpEv = R.traverseIntMapWithKeyWithAdjust $ \_ -> fmap Identity 
--}
+                    => ComposedIntMap a m
+                    -> R.Event t (ComposedPatchIntMap a m)
+                    -> m (ComposedIntMap a Identity, R.Event t (ComposedPatchIntMap a Identity))
+  sequenceWithPatch (ComposedIntMap ci) cpEv =
+    let f (im, pim) = (ComposedIntMap . Compose $ im, fmap (ComposedPatchIntMap . Compose) pim)
+    in f <$> R.traverseIntMapWithKeyWithAdjust (\_ -> fmap Identity) (getCompose ci) (fmap (getCompose . unCPI) cpEv) 
+
   patchPairToDynamic :: (R.MonadHold t m, R.Reflex t)
-                     => ComposedIntMap Identity a
-                     -> R.Event t (ComposedPatchIntMap Identity a)
-                     -> m (R.Dynamic t (ComposedIntMap Identity a))
-  patchPairToDynamic a0 a' = fmap (fmap (ComposedIntMap . Compose . fmap Identity)) $ R.incrementalToDynamic <$> R.holdIncremental (fmap runIdentity . getCompose . unCI $ a0) (fmap runIdenity . getCompose . unCPI $ a')
+                     => ComposedIntMap a Identity
+                     -> R.Event t (ComposedPatchIntMap a Identity)
+                     -> m (R.Dynamic t (ComposedIntMap a Identity))
+  patchPairToDynamic a0 a' = R.incrementalToDynamic <$> R.holdIncremental a0 a'
 

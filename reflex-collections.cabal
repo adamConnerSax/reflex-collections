@@ -57,6 +57,7 @@ library
                      , these
                      , hashable
                      , safe
+                     , semigroups
                      , unordered-containers >= 0.2.8.0
                      , witherable >= 0.2
   if impl(ghcjs)
