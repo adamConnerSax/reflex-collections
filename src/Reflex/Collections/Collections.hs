@@ -41,7 +41,7 @@ import           Reflex.Collections.Diffable        (Diffable (..), toDiff)
 import           Reflex.Collections.HasFan          (HasFan (..))
 import           Reflex.Collections.KeyedCollection (KeyedCollection (..))
 import           Reflex.Collections.Sequenceable    (PatchSequenceable (..),
-                                                     ReflexSequenceable (..))
+                                                     ReflexMergeable (..))
 import           Reflex.Collections.ToPatchType     (SeqTypes (..),
                                                      ToPatchType (..),
                                                      distributeOverDynPure,
@@ -129,7 +129,7 @@ listViewWithKeyGeneral' ::  ( R.Adjustable t m
                             , SeqTypes f v
                             , PatchSeqC f a
                             , PatchSeqC f (R.Event t a)
-                            , ReflexSequenceable (SeqType f a)
+                            , ReflexMergeable (SeqType f a)
                             , HasFan f
                             , GCompare (FanSelKey f v)
                             , FanInKey f ~ Key f)
@@ -147,7 +147,7 @@ listViewWithKeyGeneral ::  ( R.Adjustable t m
                            , SeqTypes f v
                            , PatchSeqC f a
                            , PatchSeqC f (R.Event t a)
-                           , ReflexSequenceable (SeqType f a)
+                           , ReflexMergeable (SeqType f a)
                            , Diffable f
                            , Monoid (f v)
                            , HasFan f

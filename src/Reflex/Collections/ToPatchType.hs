@@ -30,7 +30,9 @@ module Reflex.Collections.ToPatchType
   ) where
 
 import           Reflex.Collections.KeyedCollection (KeyedCollection(..))
-import           Reflex.Collections.Sequenceable (ReflexSequenceable(..), PatchSequenceable(..))
+import           Reflex.Collections.Sequenceable ( ReflexMergeable(..)
+                                                 , PatchSequenceable(..)
+                                                 , ReflexSequenceable(..))
 import           Reflex.Collections.DMapIso (DMapIso(..), DiffToPatchDMap(..))
 import           Reflex.Collections.Diffable (Diffable(..), MapDiff, ArrayDiff(..))
 
@@ -74,7 +76,7 @@ mergeOver :: forall t f v. ( R.Reflex t
                            , ToPatchType f
                            , SeqTypes f v
                            , PatchSequenceable (SeqType f v) (SeqPatchType f v)
-                           , ReflexSequenceable (SeqType f v))
+                           , ReflexMergeable (SeqType f v))
   => f (R.Event t v) -> R.Event t (f v)
 mergeOver fEv =
   let id2 = const id :: (k -> R.Event t v -> R.Event t v)
