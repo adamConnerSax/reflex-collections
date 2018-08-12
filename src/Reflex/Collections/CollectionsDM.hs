@@ -21,9 +21,6 @@ module Reflex.Collections.CollectionsDM
   , listViewWithKeyDM
   , listWithKeyShallowDiffDM
   , selectViewListWithKeyDM
---  , toSeqType
---  , mergeOverDM
---  , distributeOverDynPureDM
   ) where
 
 

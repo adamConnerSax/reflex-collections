@@ -11,6 +11,7 @@
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE DefaultSignatures     #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ConstraintKinds #-}
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
 #endif
@@ -48,7 +49,7 @@ import           Data.Functor.Misc       (ComposeMaybe (..), Const2 (..),
                                           dmapToMap, mapWithFunctorToDMap)
 import           Data.Functor.Identity   (Identity(..), runIdentity)                 
 import           Data.Proxy              (Proxy (..))
-import           Data.Kind               (Type)
+import           Data.Kind               (Type, Constraint)
 import           Data.Monoid             (Monoid(..))
 
 import           Data.Map (Map)
@@ -112,6 +113,8 @@ class SeqTypes (f :: Type -> Type) (v :: Type) where
 -- This class has the capabilities to translate f v and its difftype into types
 -- that are sequenceable, and then bring the original type back
 -- This requires that the Diff type be mapped to the correct type for diffing at the sequenceable level (e.g., as a DMap).
+-- I think, if we had quantified constraints, we could add (forall v. GCompare (FanSelectKey f v))
+-- might be able to do it now with Data.Constraint.Forall but that would propagate complication
 class (KeyedCollection f, Diffable f) => ToPatchType (f :: Type -> Type) where
   type FanSelectKey f :: Type -> Type -> Type -- NB: This is a key for a DMap since fan uses DMap
   withFunctorToSeqType :: SeqTypes f v => Functor g => f (g v) -> SeqType f v g

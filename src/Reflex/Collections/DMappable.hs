@@ -11,6 +11,8 @@
 {-# LANGUAGE RecursiveDo                #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
 #endif
@@ -33,7 +35,6 @@ import           Data.Dependent.Map                 (DMap)
 import           Data.Functor.Identity              (Identity (..))
 import           Data.Monoid                        (Monoid (..))
 import           Data.Proxy                         (Proxy (..))
-
 
 -- This is just a wrapper so that we can make instances using DMapIso without overlaps
 -- to make all the DMapIso based collection functions work for a collection type (f :: Type -> Type) (e.g., Map k) you need

@@ -55,8 +55,10 @@ import           Data.Dependent.Map                 (GCompare)
 import           Data.Foldable                      (Foldable, toList)
 import           Data.Proxy                         (Proxy (..))
 
+-- If we only want to support ghc8+, we could replace proxies with type application.
 
-type PatchSeqC f a = (SeqTypes f a, PatchSequenceable (SeqType f a) (SeqPatchType f a))
+-- NB: This also implies Diffable f and KeyedCollection f since they are superclasses of ToPatchType f
+type PatchSeqC f a = (SeqTypes f a, PatchSequenceable (SeqType f a) (SeqPatchType f a), ToPatchType f)
 
 -- | Sequenceable and ToPatch are enough for listHoldWithKey
 -- listHoldWithKey is an efficient collection management function if your input is a static initial state and events of updates.
@@ -66,8 +68,6 @@ type PatchSeqC f a = (SeqTypes f a, PatchSequenceable (SeqType f a) (SeqPatchTyp
 -- (or, really, whatever makePatchSeq turns it into), must be consistent.
 listHoldWithKeyGeneral :: forall t m f v a. ( R.Adjustable t m
                                             , R.MonadHold t m
-                                            , ToPatchType f
-                                            , SeqTypes f v
                                             , PatchSeqC f a)
   => f v -> R.Event t (Diff f v) -> (Key f -> v -> m a) -> m (R.Dynamic t (f a))
 listHoldWithKeyGeneral c0 c' h = do
@@ -79,13 +79,14 @@ listHoldWithKeyGeneral c0 c' h = do
   fmap fromSeqType <$> patchPairToDynamic a0 a'
 
 
+-- With quantified constraints, I think we can put the GCompare constraint on ToPatchType via
+-- (forall v. GCompare (FanSelectKey f v))
+
 -- These are all generalized over a function "(R.Dynamic t (f v) -> m (f v, R.Event t (Diff f k v)))"
 -- for the listWithKey and listWithKeyShallow diff we need to be able to fan events
 listWithKeyGeneral' :: forall t m f v a. ( R.Adjustable t m
                                          , R.PostBuild t m
                                          , R.MonadHold t m
-                                         , ToPatchType f
-                                         , SeqTypes f v
                                          , PatchSeqC f a
                                          , GCompare (FanSelectKey f v))
                     => (R.Dynamic t (f v) -> m (f v, R.Event t (Diff f v)))
@@ -104,10 +105,7 @@ listWithKeyGeneral :: ( R.Adjustable t m
                       , R.PostBuild t m
                       , MonadFix m
                       , R.MonadHold t m
-                      , ToPatchType f  -- for the listHold
                       , PatchSeqC f a  -- for the listHold
-                      , SeqTypes f v
-                      , Diffable f
                       , Monoid (f v)
                       , Functor (Diff f)
                       , GCompare (FanSelectKey f v))
@@ -120,8 +118,6 @@ listWithKeyGeneral = listWithKeyGeneral' hasEmptyDiffableDynamicToInitialPlusKey
 listViewWithKeyGeneral' ::  ( R.Adjustable t m
                             , R.PostBuild t m
                             , R.MonadHold t m
-                            , ToPatchType f
-                            , SeqTypes f v
                             , PatchSeqC f a
                             , PatchSeqC f (R.Event t a)
                             , ReflexMergeable (SeqType f a)
@@ -136,12 +132,9 @@ listViewWithKeyGeneral ::  ( R.Adjustable t m
                            , R.PostBuild t m
                            , R.MonadHold t m
                            , MonadFix m
-                           , ToPatchType f
-                           , SeqTypes f v
                            , PatchSeqC f a
                            , PatchSeqC f (R.Event t a)
                            , ReflexMergeable (SeqType f a)
-                           , Diffable f
                            , Monoid (f v)
                            , GCompare (FanSelectKey f v))
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (f a))
@@ -158,14 +151,10 @@ listViewWithKeyGeneral = listViewWithKeyGeneral' hasEmptyDiffableDynamicToInitia
 listWithKeyShallowDiffGeneral :: forall t m f v a.( R.Adjustable t m
                                                   , MonadFix m
                                                   , R.MonadHold t m
-                                                  , ToPatchType f  -- for the listHold
                                                   , PatchSeqC f a -- for the listHold
-                                                  , SeqTypes f v
-                                                  , Diffable f
                                                   , Monoid (f ())
                                                   , Functor (Diff f)
-                                                  , GCompare (FanSelectKey f v)
-                                                  , Key f ~ Key (Diff f))
+                                                  , GCompare (FanSelectKey f v))
   => f v -> R.Event t (Diff f v) -> (Key f -> v -> R.Event t v -> m a) -> m (R.Dynamic t (f a))
 listWithKeyShallowDiffGeneral initialVals valsChanged mkChild = do
   let makeSelKey' = makeSelectKey (Proxy :: Proxy f) (Proxy :: Proxy v)
@@ -183,11 +172,8 @@ selectViewListWithKeyGeneral :: ( R.Adjustable t m
                                 , R.MonadHold t m
                                 , R.PostBuild t m
                                 , Foldable f -- for toList
-                                , ToPatchType f  -- for the listHold
-                                , SeqTypes f v
                                 , PatchSeqC f a -- for the listHold
                                 , PatchSeqC f (R.Event t (Key f, a)) -- for the listHold
-                                , Diffable f  -- for the listWithKeyGeneral
                                 , Monoid (f v)
                                 , Functor (Diff f)
                                 , GCompare (FanSelectKey f v)
@@ -245,10 +231,7 @@ sampledListWithKey :: ( R.Adjustable t m
                       , R.PostBuild t m
                       , MonadFix m
                       , R.MonadHold t m
-                      , ToPatchType f  -- for the listHold
-                      , SeqTypes f v
                       , PatchSeqC f a -- for the listHold
-                      , Diffable f
                       , Functor (Diff f)
                       , GCompare (FanSelectKey f v))
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
