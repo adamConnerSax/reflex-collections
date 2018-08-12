@@ -37,7 +37,6 @@ library
                   Reflex.Collections.Sequenceable
                   Reflex.Collections.KeyedCollection
                   Reflex.Collections.ToPatchType
-                  Reflex.Collections.HasFan
                   Reflex.Collections.Diffable
   other-modules:
 

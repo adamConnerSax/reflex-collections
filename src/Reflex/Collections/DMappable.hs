@@ -21,9 +21,7 @@ module Reflex.Collections.DMappable
 
 
 import           Reflex.Collections.Diffable        (Diffable (..))
-import           Reflex.Collections.DMapIso         (DMapIso (..),
-                                                     DiffToPatchDMap (..))
-import           Reflex.Collections.HasFan          (HasFan (..))
+import           Reflex.Collections.DMapIso         (DMapIso (..))
 import           Reflex.Collections.KeyedCollection (KeyedCollection (..))
 import           Reflex.Collections.ToPatchType     (SeqTypes (..),
                                                      ToPatchType (..))
@@ -47,9 +45,7 @@ import           Data.Proxy                         (Proxy (..))
 -- from which we can derive, for (DMappable f) the above, as well as,
 -- SeqTypes (DMappable f)
 -- ToPatchType (DMappable f)
--- HasFan (DMappable f)
 
--- for listWithKeyShallowDiff you will also need HasFan (Diff f).
 
 
 newtype DMappable f v = DMappable { unDMappable :: f v } deriving (Functor, Foldable)
@@ -82,22 +78,15 @@ instance DMapIso f => DMapIso (DMappable f) where
   makeDMapKey _ = makeDMapKey (Proxy :: Proxy f)
   toDMapWithFunctor = toDMapWithFunctor . unDMappable
   fromDMap = DMappable . fromDMap
+  diffToFanInput _ = diffToFanInput (Proxy :: Proxy f) 
+  makePatch _ = makePatch (Proxy :: Proxy f) 
 
-instance (KeyedCollection f, DMapIso f, DiffToPatchDMap f) => ToPatchType (DMappable f) where
+instance (KeyedCollection f, DMapIso f) => ToPatchType (DMappable f) where
+  type FanSelectKey (DMappable f) = DMapKey f
   withFunctorToSeqType = toDMapWithFunctor . unDMappable
   fromSeqType = DMappable . fromDMap
   makePatchSeq _ = makePatch (Proxy :: Proxy f)
-
-instance DMapIso f => HasFan (DMappable f) where
-  type FanInKey (DMappable f) = Key f
-  type FanSelKey (DMappable f) = DMapKey f
-  makeSelKey pf _ = makeDMapKey pf
+  makeSelectKey pf _ = makeDMapKey pf
   doFan = R.fan . fmap (toDMapWithFunctor . fmap Identity . DMappable)
-
-{-
-instance HasFan f => HasFan (DMappable f) where
-  type FanInKey (DMappable f) = FanInKey f
-  type FanSelKey (DMappable f) = FanSelKey f
-  makeSelKey _ = makeSelKey (Proxy :: Proxy f) -- use the version from (HasFan f) since it's the same key
-  doFan = doFan . fmap unDMappable
--}
+  diffToFanType pf = diffToFanInput pf
+  doDiffFan pf = R.fan . fmap (diffToFanType pf) 

@@ -19,24 +19,21 @@ import           Reflex.Dom.Old                   (MonadWidget)
 import           Control.Monad                    (join)
 import           Control.Monad.Fix                (MonadFix)
 import           Data.Bool                        (bool)
-import           Data.Functor.Compose             (Compose (..))
 
 
-import qualified Data.Array                       as A
 import qualified Data.Map                         as M
-import           Data.Maybe                       (fromJust, isNothing)
-import           Data.Monoid                      ((<>))
-import           Data.Proxy                       (Proxy (..))
+--import           Data.Maybe                       (fromJust, isNothing)
+--import           Data.Monoid                      ((<>))
+--import           Data.Proxy                       (Proxy (..))
 import qualified Data.Text                        as T
 
 import           System.Process                   (spawnProcess)
 import           Text.Read                        (readMaybe)
 
-import           Safe                             (headMay)
+--import           Safe                             (headMay)
 
-import           Reflex.Collections.Collections
-import           Reflex.Collections.CollectionsDM
-
+import Reflex.Collections.Collections
+import Reflex.Collections.CollectionsDM
 
 -- NB: This is just for warp.
 main::IO ()

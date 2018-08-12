@@ -16,7 +16,7 @@
 module Reflex.Collections.DMapIso
   (
     DMapIso(..)
-  , DiffToPatchDMap(..)
+--  , DiffToPatchDMap(..)
   ) where
 
 import           Reflex.Collections.KeyedCollection (KeyedCollection(..))
@@ -61,30 +61,41 @@ dmapToKeyedCollection :: KeyedCollection f => DMap (Const2 (Key f) v) Identity -
 dmapToKeyedCollection = fromKeyValueList . fmap (\(Const2 k :=> Identity v) -> (k, v)) . DM.toList 
 
 -- If we had Quantified Constraints, we might add (forall v. (GCompare (DMapKey f v))) to the constraints
-class KeyedCollection f => DMapIso (f :: Type -> Type) where
+class (KeyedCollection f, Diffable f) => DMapIso (f :: Type -> Type) where
   type DMapKey f :: Type -> Type -> Type
   makeDMapKey :: Proxy f -> Key f -> DMapKey f v v 
   toDMapWithFunctor :: Functor g => f (g v) -> DMap (DMapKey f v) g
   fromDMap :: DMap (DMapKey f v) Identity -> f v
+  diffToFanInput :: Proxy f -> Diff f v -> DMap (DMapKey f v) Identity
+  makePatch :: Functor g => Proxy f -> (Key f -> v -> g u) -> Diff f v -> PatchDMap (DMapKey f u) g
 
 instance Ord k => DMapIso (Map k) where
   type DMapKey (Map k) = Const2 k
   makeDMapKey _ = Const2
   toDMapWithFunctor = mapWithFunctorToDMap
   fromDMap = dmapToMap
+  diffToFanInput _ = toDMapWithFunctor . M.mapMaybe (fmap Identity) . getCompose 
+  makePatch _ h =
+    PatchDMap . keyedCollectionToDMapWithFunctor . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) . getCompose   
 
 instance (Eq k, Ord k, Hashable k) => DMapIso (HashMap k) where
   type DMapKey (HashMap k) = Const2 k
   makeDMapKey _ = Const2
   toDMapWithFunctor = keyedCollectionToDMapWithFunctor
   fromDMap = dmapToKeyedCollection
+  diffToFanInput _ = toDMapWithFunctor . HM.mapMaybe (fmap Identity) . getCompose 
+  makePatch _ h =
+    PatchDMap . keyedCollectionToDMapWithFunctor . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) . getCompose   
 
 instance DMapIso (IntMap) where
   type DMapKey IntMap = Const2 Int
   makeDMapKey _ = Const2
   toDMapWithFunctor = intMapWithFunctorToDMap
   fromDMap = IM.fromDistinctAscList . fmap (\(Const2 k :=> Identity v) -> (k, v)) . DM.toAscList
-  
+  diffToFanInput _ = toDMapWithFunctor . IM.mapMaybe (fmap Identity) . getCompose 
+  makePatch _ h =
+    PatchDMap . keyedCollectionToDMapWithFunctor . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) . getCompose     
+
 -- this one is more efficient since it uses the ascending list
 intMapWithFunctorToDMap :: Functor g => IntMap (g v) -> DMap (Const2 Int v) g
 intMapWithFunctorToDMap = DM.fromDistinctAscList . fmap (\(k, v) -> Const2 k :=> v) . IM.toAscList
@@ -94,7 +105,11 @@ instance Ix k => DMapIso (Array k) where
   makeDMapKey _ = Const2
   toDMapWithFunctor = keyedCollectionToDMapWithFunctor
   fromDMap = dmapToKeyedCollection
+  diffToFanInput _ = DM.fromList . fmap (\(k, v) -> Const2 k :=> Identity v) . unArrayDiff 
+  makePatch _ h (ArrayDiff ad) =
+    PatchDMap .  DM.fromList $ fmap (\(k, v) -> Const2 k :=> (ComposeMaybe . Just $ h k v)) ad
 
+{-
 -- This class seems like it's purely for overloading.
 class (DMapIso f, KeyedCollection f, Diffable f) => DiffToPatchDMap (f :: Type -> Type) where
   makePatch :: Functor g => Proxy f -> (Key f -> v -> g u) -> Diff f v -> PatchDMap (DMapKey f u) g
@@ -113,4 +128,4 @@ instance DiffToPatchDMap IntMap where
 instance (Ix k, Ord k) => DiffToPatchDMap (Array k) where
   makePatch _ h (ArrayDiff ad) = PatchDMap .  DM.fromList $ fmap (\(k, v) -> Const2 k :=> (ComposeMaybe . Just $ h k v)) ad
 
-  
+-}

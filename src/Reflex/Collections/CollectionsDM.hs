@@ -29,20 +29,16 @@ module Reflex.Collections.CollectionsDM
 
 import           Reflex.Collections.Diffable        (Diffable (..))
 import           Reflex.Collections.DMappable       (DMappable (..))
-import           Reflex.Collections.HasFan          (HasFan (..))
 import           Reflex.Collections.KeyedCollection (KeyedCollection (Key))
-{-import           Reflex.Collections.ToPatchType     (distributeOverDynPure,
-                                                     functorMappedToSeqType,
-                                                     mergeOver, toSeqType)
--}
-import           Reflex.Collections.Collections     (listHoldWithKeyGeneral,
+
+import           Reflex.Collections.Collections     (FanSelectKey,
+                                                     listHoldWithKeyGeneral,
                                                      listViewWithKeyGeneral,
                                                      listWithKeyGeneral,
                                                      listWithKeyShallowDiffGeneral,
                                                      selectViewListWithKeyGeneral)
 
-import           Reflex.Collections.DMapIso         (DMapIso (DMapKey),
-                                                     DiffToPatchDMap)
+import           Reflex.Collections.DMapIso         (DMapIso (DMapKey))
 
 import           Control.Monad.Fix                  (MonadFix)
 import           Data.Dependent.Map                 (GCompare)
@@ -53,7 +49,7 @@ import qualified Reflex                             as R
 
 
 -- This constraint requires f isomorphic to a DMap, that diffs of f can be mapped to DMaps with the same key and that that key is (Const2 k v)
-type DMappableC f = (DMapIso f, DiffToPatchDMap f, Ord (Key f), DMapKey f ~ Const2 (Key f))
+type DMappableC f = (DMapIso f, Ord (Key f), DMapKey f ~ Const2 (Key f))
 
 listHoldWithKeyDM :: ( R.Adjustable t m
                      , R.MonadHold t m
@@ -68,17 +64,13 @@ listHoldWithKeyDM fv diffEv = fmap (fmap unDMappable) . listHoldWithKeyGeneral (
 -- This constraint requires that f be diffable, that (Diff f) be a functor, and that f and (Diff f) use the same key type
 type DiffableC f = (Diffable f, Functor (Diff f), Key f ~ Key (Diff f))
 
--- This constraint requires that f can be fanned using the key of KeyedCollection f and that the DMap key for the fan has a GCompare instance
-type FannableC f v = (HasFan f, FanInKey f ~ Key f, GCompare (FanSelKey f v))
-
-
 listWithKeyDM :: ( R.Adjustable t m
                  , R.MonadHold t m
                  , R.PostBuild t m
                  , MonadFix m
                  , DMappableC f
-                 , FannableC f v
                  , DiffableC f
+                 , GCompare (FanSelectKey f v)
                  , Monoid (f v))
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
 listWithKeyDM vals = fmap (fmap unDMappable) . listWithKeyGeneral (DMappable <$> vals)
@@ -89,8 +81,8 @@ listViewWithKeyDM ::  ( R.Adjustable t m
                       , R.MonadHold t m
                       , MonadFix m
                       , DMappableC f
-                      , FannableC f v
                       , DiffableC f
+                      , GCompare (FanSelectKey f v)
                       , Monoid (f v))
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (f a))
 listViewWithKeyDM vals = fmap (fmap unDMappable) . listViewWithKeyGeneral (DMappable <$> vals)
@@ -100,8 +92,8 @@ listWithKeyShallowDiffDM :: ( R.Adjustable t m
                             , MonadFix m
                             , R.MonadHold t m
                             , DMappableC f
-                            , FannableC (Diff f) v
                             , DiffableC f
+                            , GCompare (FanSelectKey f v)
                             , Monoid (f ()))
   => f v -> R.Event t (Diff f v) -> (Key f -> v -> R.Event t v -> m a) -> m (R.Dynamic t (f a))
 listWithKeyShallowDiffDM initialVals dEv = fmap (fmap unDMappable) . listWithKeyShallowDiffGeneral (DMappable initialVals) dEv
@@ -115,8 +107,8 @@ selectViewListWithKeyDM :: ( R.Adjustable t m
                            , R.PostBuild t m
                            , Foldable f -- for toList
                            , DMappableC f
-                           , FannableC f v
                            , DiffableC f
+                           , GCompare (FanSelectKey f v)
                            , Monoid (f v))
   => R.Dynamic t (Key f)          -- ^ Current selection key
   -> R.Dynamic t (f v)      -- ^ Dynamic container of values

@@ -15,6 +15,8 @@ module Reflex.Collections.Sequenceable
     ReflexMergeable (..)
   , PatchSequenceable(..)
   , ReflexSequenceable(..)
+  , ComposedIntMap (..)
+  , ComposedPatchIntMap (..)
   ) where
 
 import qualified Reflex                 as R
