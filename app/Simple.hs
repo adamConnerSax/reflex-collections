@@ -22,13 +22,14 @@ import           Data.Bool                        (bool)
 
 
 import qualified Data.Map                         as M
+import qualified Data.IntMap                      as IM
 --import           Data.Maybe                       (fromJust, isNothing)
 --import           Data.Monoid                      ((<>))
 --import           Data.Proxy                       (Proxy (..))
 import qualified Data.Text                        as T
 
 import           System.Process                   (spawnProcess)
-import           Text.Read                        (readMaybe)
+import           Text.Read                        (Read, readMaybe)
 
 --import           Safe                             (headMay)
 
@@ -53,23 +54,34 @@ naiveMapHold xDyn w = join $ switchPromptly never <$> (dyn $ flip staticMapHold 
 testWidget :: JSM()
 testWidget = mainWidget $ do
   let x0 :: M.Map T.Text Int = M.fromList [("A",1),("B",2),("C",3)]
+  let xIntMap :: IM.IntMap Double = IM.fromAscList [(1,1.0),(2,2.0),(3,3.0)]
   el "h1" $ text "reflex-collections \"listView\" Function Family Examples"
   smallBreak
   el "h3" $ text "First, directly--mapping the widget over the map as a list, tagging the events with their keys, sequencing, making back into a map and then running mergeMap."
-  mapEv0 <- staticMapHold x0 pairWidget --fmap (mergeMap . M.fromList) . sequence . fmap (\(k,v) -> (k,) <$> pairWidget k (constDyn v)) $ M.toList x0
+  mapEv0 <- staticMapHold x0 (pairWidget id) --fmap (mergeMap . M.fromList) . sequence . fmap (\(k,v) -> (k,) <$> pairWidget k (constDyn v)) $ M.toList x0
   mapDyn0 <- foldDyn M.union x0 mapEv0
   dynText $ fmap (T.pack . show) mapDyn0
   el "h3" $ text "Now we feed the dynamic result into a dynamic version (fmapping the static version and then using dyn and switchPromptly) of the same thing to show how it rebuilds for all changes to the input."
-  mapEv1 <- naiveMapHold mapDyn0 pairWidget
+  mapEv1 <- naiveMapHold mapDyn0 (pairWidget id)
   mapDyn1 <- foldDyn M.union x0 mapEv1
   dynText $ fmap (T.pack . show) mapDyn1
   bigBreak
 
   el "h3" $ text "Now we feed it instead to listViewWithKey to show that the widgets are not rebuilt. But notice that *all* even when any 1 input changes. Can we fix that too?"
-  mapEv2 <- listViewWithKeyDM mapDyn0 pairWidget
+  mapEv2 <- listViewWithKeyDM mapDyn0 (pairWidget id)
   mapDyn2 <- foldDyn M.union x0 mapEv2
   dynText $ fmap (T.pack . show) mapDyn2
 
+  bigBreak
+  el "h3" $ text "Now an IntMap example using IntMap underneath instead of DMap"
+  intMapEv0 <- listViewWithKeyGeneral (constDyn xIntMap) (pairWidget (T.pack . show))
+  intMapDyn0 <- foldDyn IM.union xIntMap intMapEv0
+  dynText $ fmap (T.pack . show) intMapDyn0
+
+  smallBreak
+  intMapEv1 <- listViewWithKeyGeneral intMapDyn0 (pairWidget (T.pack . show))
+  intMapDyn1 <- foldDyn IM.union xIntMap intMapEv1
+  dynText $ fmap (T.pack . show) intMapDyn1
   return ()
 
 
@@ -104,8 +116,8 @@ fieldWidgetEv parse vDyn = do
   let config = TextInputConfig "text" "" inputEv attrs
   fmapMaybe parse . _textInput_input <$> textInput config -- Dynamic t (Maybe v)
 
-pairWidget :: ReflexConstraints t m => T.Text -> Dynamic t Int -> m (Event t Int)
-pairWidget t iDyn = do
-  el "span" $ text t
+pairWidget :: (Read a, Show a, ReflexConstraints t m) => (k -> T.Text) -> k -> Dynamic t a -> m (Event t a)
+pairWidget toText k iDyn = do
+  el "span" $ text (toText k)
   el "span" $ fieldWidgetEv (readMaybe . T.unpack) iDyn
 
