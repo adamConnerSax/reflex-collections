@@ -57,13 +57,8 @@ composedIntMapToKeyedCollection toKey = fmap runIdentity . composedIntMapToKeyed
 
 class (KeyedCollection f, Diffable f) => IntMapIso (f :: Type -> Type) where
   type DMapKey f :: Type -> Type -> Type
-  keyToInt :: Proxy f -> Key f -> Int
-  intToKey :: Proxy f -> Int -> Key f
   toComposedIntMapWithFunctor :: Functor g => f (g v) -> ComposedIntMap v g
-  toComposedIntMapWithFunctor = keyedCollectionToComposedIntMapWithFunctor (keyToInt (Proxy :: Proxy f))
   fromComposedIntMap :: ComposedIntMap v Identity -> f v
-  fromComposedIntMap = composedIntMapToKeyedCollection (intToKey (Proxy :: Proxy f))
-  -- these cannot have general implementations because they depend on the structure of the Diff and/or the type of DMapKey
   makePatch :: Functor g => Proxy f -> (Key f -> v -> g u) -> Diff f v -> ComposedPatchIntMap u g
   makeDMapKey :: Proxy f -> Key f -> DMapKey f v v
   toFanInput :: f v -> DMap (DMapKey f v) Identity
@@ -71,8 +66,6 @@ class (KeyedCollection f, Diffable f) => IntMapIso (f :: Type -> Type) where
   
 instance IntMapIso IntMap where
   type DMapKey IntMap = Const2 Int
-  keyToInt _ = id
-  intToKey _ = id
   toComposedIntMapWithFunctor = ComposedIntMap . Compose
   fromComposedIntMap = fmap runIdentity . getCompose . unCI
   makePatch _ h =
@@ -85,3 +78,15 @@ instance IntMapIso IntMap where
 intMapWithFunctorToDMap :: Functor g => IntMap (g v) -> DMap (Const2 Int v) g
 intMapWithFunctorToDMap = DM.fromDistinctAscList . fmap (\(k, v) -> Const2 k :=> v) . IM.toAscList
 
+-- this only works for an array which has an element for every value of the key
+-- could be made slightly more general, getting the ints from position in a larger set
+-- but would be finicky and sacrifice some performance in the conversions. I think.
+instance (Enum k, Bounded k, A.Ix k) => IntMapIso (A.Array k) where
+  type DMapKey (Array k) = Const2 k
+  toComposedIntMapWithFunctor = ComposedIntMap . Compose . IM.fromAscList . zip [0..] . fmap snd . A.assocs  
+  fromComposedIntMap = A.listArray (minBound,maxBound) . fmap runIdentity . fmap snd . IM.toAscList . getCompose . unCI
+  makePatch _ h =
+    ComposedPatchIntMap . Compose . R.PatchIntMap . IM.fromAscList . zip [0..] . fmap (\(k,v) -> Just $ h k v) . unArrayDiff
+  makeDMapKey _ = Const2
+  toFanInput = DM.fromDistinctAscList . fmap (\(k,v) -> Const2 k :=> Identity v) . A.assocs
+  diffToFanInput _ = DM.fromDistinctAscList . fmap (\(k,v) -> Const2 k :=> Identity v) . unArrayDiff 

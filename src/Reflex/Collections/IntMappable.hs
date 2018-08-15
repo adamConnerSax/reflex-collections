@@ -76,8 +76,6 @@ instance IntMapIso f => SeqTypes (IntMappable f) v where
 
 instance IntMapIso f => IntMapIso (IntMappable f) where
   type DMapKey (IntMappable f) = DMapKey f
-  keyToInt _ = keyToInt (Proxy :: Proxy f)
-  intToKey _ = intToKey (Proxy :: Proxy f)
   toComposedIntMapWithFunctor = toComposedIntMapWithFunctor . unIntMappable
   fromComposedIntMap = IntMappable . fromComposedIntMap
   makePatch _ = makePatch (Proxy :: Proxy f)
