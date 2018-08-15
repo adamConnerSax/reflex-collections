@@ -11,8 +11,8 @@
 {-# LANGUAGE RecursiveDo                #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE UndecidableSuperClasses #-}
+{-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE UndecidableSuperClasses    #-}
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
 #endif
@@ -41,13 +41,10 @@ import           Data.Proxy                         (Proxy (..))
 -- KeyedCollection f
 -- Diffable f
 -- DMapIso f
--- DiffToPatchDMap f
 -- Monoid (f v)
 -- from which we can derive, for (DMappable f) the above, as well as,
 -- SeqTypes (DMappable f)
 -- ToPatchType (DMappable f)
-
-
 
 newtype DMappable f v = DMappable { unDMappable :: f v } deriving (Functor, Foldable)
 
@@ -79,8 +76,8 @@ instance DMapIso f => DMapIso (DMappable f) where
   makeDMapKey _ = makeDMapKey (Proxy :: Proxy f)
   toDMapWithFunctor = toDMapWithFunctor . unDMappable
   fromDMap = DMappable . fromDMap
-  diffToFanInput _ = diffToFanInput (Proxy :: Proxy f) 
-  makePatch _ = makePatch (Proxy :: Proxy f) 
+  diffToFanInput _ = diffToFanInput (Proxy :: Proxy f)
+  makePatch _ = makePatch (Proxy :: Proxy f)
 
 instance (KeyedCollection f, DMapIso f) => ToPatchType (DMappable f) where
   type FanSelectKey (DMappable f) = DMapKey f
@@ -90,4 +87,4 @@ instance (KeyedCollection f, DMapIso f) => ToPatchType (DMappable f) where
   makeSelectKey pf _ = makeDMapKey pf
   doFan = R.fan . fmap (toDMapWithFunctor . fmap Identity . DMappable)
   diffToFanType pf = diffToFanInput pf
-  doDiffFan pf = R.fan . fmap (diffToFanType pf) 
+  doDiffFan pf = R.fan . fmap (diffToFanType pf)

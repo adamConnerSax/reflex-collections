@@ -17,25 +17,23 @@
 #endif
 module Reflex.Collections.ToPatchType
   (
-    SeqType
-  , SeqPatchType
-  , ToPatchType(..)
+    ToPatchType(..)
   , SeqTypes(..)
   , toSeqType
   , functorMappedToSeqType
   , distributeOverDynPure
   , mergeOver
---  , DMappable(..)
   , MapDiff
   , ArrayDiff(..)
   ) where
 
 import           Reflex.Collections.KeyedCollection (KeyedCollection(..))
+import           Reflex.Collections.ComposedIntMap ( ComposedIntMap(..)
+                                                   , ComposedPatchIntMap (..))
 import           Reflex.Collections.Sequenceable ( ReflexMergeable(..)
                                                  , PatchSequenceable(..)
-                                                 , ReflexSequenceable(..)
-                                                 , ComposedIntMap(..)
-                                                 , ComposedPatchIntMap (..))
+                                                 , ReflexSequenceable(..))
+                 
 import           Reflex.Collections.DMapIso (DMapIso(..))
 import           Reflex.Collections.Diffable (Diffable(..), MapDiff, ArrayDiff(..))
 
@@ -45,12 +43,10 @@ import           Data.Dependent.Map      (DMap, DSum ((:=>)))
 import qualified Data.Dependent.Map      as DM
 import           Reflex.Patch            (PatchDMap (..))
 import           Data.Functor.Compose    (Compose(..), getCompose)
-import           Data.Functor.Misc       (ComposeMaybe (..), Const2 (..),
-                                          dmapToMap, mapWithFunctorToDMap)
+import           Data.Functor.Misc       (Const2 (..))
 import           Data.Functor.Identity   (Identity(..), runIdentity)                 
 import           Data.Proxy              (Proxy (..))
-import           Data.Kind               (Type, Constraint)
-import           Data.Monoid             (Monoid(..))
+import           Data.Kind               (Type)
 
 import           Data.Map (Map)
 import qualified Data.Map as M
@@ -86,24 +82,6 @@ mergeOver fEv =
   let id2 = const id :: (k -> R.Event t v -> R.Event t v)
   in fmap fromSeqType . mergeEvents $ functorMappedToSeqType id2 fEv
 
--- generic to and fromDMap for Keyed collections
--- can be optimized for collections that have to/from ascending lists
-keyedCollectionToDMapWithFunctor :: (KeyedCollection f, Ord (Key f)) => f (g v) -> DMap (Const2 (Key f) v) g
-keyedCollectionToDMapWithFunctor = DM.fromList . fmap (\(k, v) -> Const2 k :=> v) . toKeyValueList
-
-keyedCollectionToDMap :: (KeyedCollection f, Ord (Key f)) => f v -> DMap (Const2 (Key f) v) Identity
-keyedCollectionToDMap = keyedCollectionToDMapWithFunctor . fmap Identity
-
-dmapToKeyedCollection :: KeyedCollection f => DMap (Const2 (Key f) v) Identity -> f v
-dmapToKeyedCollection = fromKeyValueList . fmap (\(Const2 k :=> Identity v) -> (k, v)) . DM.toList 
-
-makePatchFromMapDiff :: ( Functor g
-                        , KeyedCollection f
-                        , Ord (Key f)
-                        , Diff f ~ MapDiff f)
-                     => Proxy f -> (Key f -> v -> g u) -> Diff f v -> PatchDMap (Const2 (Key f) u) g
-makePatchFromMapDiff _ h =
-  PatchDMap . keyedCollectionToDMapWithFunctor . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) . getCompose                     
 
 -- | Type families for the sequenceable and patch types.  Always DMap for now
 class SeqTypes (f :: Type -> Type) (v :: Type) where

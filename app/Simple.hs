@@ -21,8 +21,8 @@ import           Control.Monad.Fix                (MonadFix)
 import           Data.Bool                        (bool)
 
 
-import qualified Data.Map                         as M
 import qualified Data.IntMap                      as IM
+import qualified Data.Map                         as M
 --import           Data.Maybe                       (fromJust, isNothing)
 --import           Data.Monoid                      ((<>))
 --import           Data.Proxy                       (Proxy (..))
@@ -33,8 +33,9 @@ import           Text.Read                        (Read, readMaybe)
 
 --import           Safe                             (headMay)
 
-import Reflex.Collections.Collections
-import Reflex.Collections.CollectionsDM
+import           Reflex.Collections.Collections
+import           Reflex.Collections.CollectionsDM
+import           Reflex.Collections.CollectionsIM
 
 -- NB: This is just for warp.
 main::IO ()
@@ -79,7 +80,7 @@ testWidget = mainWidget $ do
   dynText $ fmap (T.pack . show) intMapDyn0
 
   smallBreak
-  intMapEv1 <- listViewWithKeyGeneral intMapDyn0 (pairWidget (T.pack . show))
+  intMapEv1 <- listViewWithKeyIM intMapDyn0 (pairWidget (T.pack . show))
   intMapDyn1 <- foldDyn IM.union xIntMap intMapEv1
   dynText $ fmap (T.pack . show) intMapDyn1
   return ()

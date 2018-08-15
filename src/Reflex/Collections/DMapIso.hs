@@ -16,13 +16,16 @@
 module Reflex.Collections.DMapIso
   (
     DMapIso(..)
---  , DiffToPatchDMap(..)
+  , keyedCollectionToDMapWithFunctor
+  , keyedCollectionToDMap
+  , dmapToKeyedCollectionWithFunctor
+  , dmapToKeyedCollection
   ) where
 
 import           Reflex.Collections.KeyedCollection (KeyedCollection(..))
-import           Reflex.Collections.Diffable (Diffable(Diff), MapDiff, ArrayDiff(..))
+import           Reflex.Collections.Diffable (Diffable(Diff), ArrayDiff(..))
 
-import qualified Reflex as R
+--import qualified Reflex as R
 
 import           Data.Dependent.Map      (DMap, DSum ((:=>)))
 import qualified Data.Dependent.Map      as DM
@@ -43,7 +46,7 @@ import           Data.Hashable           (Hashable)
 import           Data.HashMap.Strict     (HashMap)
 import qualified Data.HashMap.Strict     as HM
 import           Data.Array             (Array, Ix)
-import qualified Data.Array             as A
+--import qualified Data.Array             as A
 
 
 -- generic to and fromDMap for Keyed collections
