@@ -78,13 +78,21 @@ instance IntMapIso IntMap where
 intMapWithFunctorToDMap :: Functor g => IntMap (g v) -> DMap (Const2 Int v) g
 intMapWithFunctorToDMap = DM.fromDistinctAscList . fmap (\(k, v) -> Const2 k :=> v) . IM.toAscList
 
+{-
+instance IntMapIso ([]) where
+  type DMapKey List = Int
+  toComposedIntMapWithFunctor = ComposedIntMap . Compose . IM.fromAscList . zip [0..]
+  fromComposedIntMap = fmap (runIdentity . snd) . IM.toAscList . getCompose . unCI
+  makePatch _ h =
+    ComposedPatchIntMap . Compose . R.PatchIntMap . IM.fromAscList . zip [0..] . fmap (\(k,v) -> Just $ h k v) . unArrayDiff
+-}  
 -- this only works for an array which has an element for every value of the key
 -- could be made slightly more general, getting the ints from position in a larger set
 -- but would be finicky and sacrifice some performance in the conversions. I think.
 instance (Enum k, Bounded k, A.Ix k) => IntMapIso (A.Array k) where
   type DMapKey (Array k) = Const2 k
   toComposedIntMapWithFunctor = ComposedIntMap . Compose . IM.fromAscList . zip [0..] . fmap snd . A.assocs  
-  fromComposedIntMap = A.listArray (minBound,maxBound) . fmap runIdentity . fmap snd . IM.toAscList . getCompose . unCI
+  fromComposedIntMap = A.listArray (minBound,maxBound) . fmap (runIdentity . snd) . IM.toAscList . getCompose . unCI
   makePatch _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . IM.fromAscList . zip [0..] . fmap (\(k,v) -> Just $ h k v) . unArrayDiff
   makeDMapKey _ = Const2
