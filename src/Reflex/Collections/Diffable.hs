@@ -21,7 +21,8 @@ module Reflex.Collections.Diffable
   , toDiff
   ) where
 
-import           Reflex.Collections.KeyedCollection (KeyedCollection(..))
+import           Reflex.Collections.KeyedCollection ( KeyedCollection(..)
+                                                    , composeMaybeMapWithKey)
 
 import           Data.Proxy             (Proxy (..))
 import           Data.Kind              (Type)
@@ -31,7 +32,7 @@ import           Data.These             (These(..))
 import           Data.Foldable          (foldl')
 import           Data.Maybe             (isNothing)
 import           Data.Monoid            (Monoid(mempty))
-import           Data.Witherable        (Filterable(..))
+--import           Data.Witherable        (Filterable(..))
 
 import           Data.Map               (Map)
 import qualified Data.Map               as M
@@ -39,9 +40,11 @@ import           Data.IntMap            (IntMap)
 import qualified Data.IntMap            as IM
 import           Data.Hashable          (Hashable)
 import           Data.HashMap.Strict    (HashMap)
-import qualified Data.HashMap.Strict as HM
+import qualified Data.HashMap.Strict    as HM
 import           Data.Array             (Array, Ix)
-import qualified Data.Array          as A
+import qualified Data.Array             as A
+import qualified Data.Sequence          as S
+import qualified Data.Foldable          as F
 
 -- | Given a diffable collection that has an empty state, we can make a diff such that "applyDiff empty . toDiff = id"  
 -- We are using the existence of a monoid instance to indicate a meaningful empty state (mempty)
@@ -55,10 +58,10 @@ toDiff = flip diffNoEq mempty
 class Diffable (f :: Type -> Type) where
   type Diff f :: Type -> Type
   mapDiffWithKey :: KeyedCollection f => Proxy f -> (Key f -> a -> b) -> Diff f a -> Diff f b
-  diffNoEq :: f v -> f v -> Diff f v
+  diffNoEq :: f v -> f v -> Diff f v 
   diff :: Eq v => f v -> f v -> Diff f v
   applyDiff :: Diff f v -> f v -> f v
-  diffOnlyKeyChanges :: f v -> f v -> Diff f v
+  diffOnlyKeyChanges :: f v -> f v -> Diff f v 
   editDiffLeavingDeletes :: Proxy f -> Diff f v -> Diff f u -> Diff f v -- this removes 2nd diff from first, except when first indicates a delete. May not generalize.
 
 newtype ArrayDiff k v = ArrayDiff { unArrayDiff :: [(k,v)] }
@@ -84,13 +87,16 @@ instance Ix k => Diffable (Array k) where
   diffOnlyKeyChanges _ _ = ArrayDiff []
   editDiffLeavingDeletes _ _ _ = ArrayDiff [] -- we could implement this partially but I don't think we need it.
 
+
 type MapDiff f = Compose f Maybe
 
+{-
 instance (KeyedCollection f, Filterable f) => KeyedCollection (MapDiff f) where
   type Key (MapDiff f) = Key f
   mapWithKey =  mapDiffMapWithKey
   toKeyValueList = toKeyValueList . mapMaybe id . getCompose
   fromKeyValueList = Compose . fmap Just . fromKeyValueList
+-}
 
 instance Ord k => Diffable (Map k) where
   type Diff (Map k) = MapDiff (Map k)
@@ -119,10 +125,35 @@ instance Diffable IntMap where
   diffOnlyKeyChanges = mapDiffOnlyKeyChanges IM.mapMaybe
   editDiffLeavingDeletes _ = mapEditDiffLeavingDeletes IM.differenceWith
 
+-- we do [] and Seq by zipping and transforming to IntMap (for diffing) and then back (when applying).  Is there a better way?
+-- especially for diffOnlyKeyChanges, the workhorse?
+instance Diffable ([]) where
+  type Diff ([]) = MapDiff IntMap
+  mapDiffWithKey _ = mapDiffMapWithKey
+  diffNoEq old new = mapDiffNoEq (listToIntMap old) (listToIntMap new) 
+  diff old new = mapDiff IM.mapMaybe (listToIntMap old) (listToIntMap new) 
+  applyDiff diff old = fmap snd . IM.toList $ mapApplyDiff IM.union IM.difference IM.filter IM.mapMaybe diff (listToIntMap old)
+  diffOnlyKeyChanges old new = mapDiffOnlyKeyChanges IM.mapMaybe (IM.fromAscList . zip [0..] $ old) (listToIntMap new)
+  editDiffLeavingDeletes _ = mapEditDiffLeavingDeletes IM.differenceWith
+
+listToIntMap :: [v] -> IntMap v
+listToIntMap = IM.fromAscList . zip [0..]
+
+instance Diffable (S.Seq) where
+  type Diff (S.Seq) = MapDiff IntMap
+  mapDiffWithKey _ = mapDiffMapWithKey
+  diffNoEq old new = mapDiffNoEq (seqToIntMap old) (seqToIntMap new) 
+  diff old new = mapDiff IM.mapMaybe (seqToIntMap old) (seqToIntMap new) 
+  applyDiff diff old = S.fromList . fmap snd . IM.toList $ mapApplyDiff IM.union IM.difference IM.filter IM.mapMaybe diff (seqToIntMap old)
+  diffOnlyKeyChanges old new = mapDiffOnlyKeyChanges IM.mapMaybe (seqToIntMap old) (seqToIntMap new)
+  editDiffLeavingDeletes _ = mapEditDiffLeavingDeletes IM.differenceWith
+
+
+seqToIntMap :: S.Seq v -> IntMap v
+seqToIntMap = IM.fromAscList . zip [0..] . F.toList
+
 mapDiffMapWithKey :: KeyedCollection f => (Key f -> a -> b) -> MapDiff f a -> MapDiff f b
-mapDiffMapWithKey h =
-  let g k = fmap (h k)
-  in Compose . mapWithKey g . getCompose
+mapDiffMapWithKey = composeMaybeMapWithKey
   
 mapDiffNoEq :: (Functor f, Align f) => f v -> f v -> MapDiff f v
 mapDiffNoEq old new =  Compose $ flip fmap (align old new) $ \case

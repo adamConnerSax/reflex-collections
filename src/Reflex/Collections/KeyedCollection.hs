@@ -15,23 +15,38 @@
 module Reflex.Collections.KeyedCollection
   (
     KeyedCollection (..)
+  , composeMaybeMapWithKey
   ) where
 
-import           Data.Kind              (Type)
-import Data.Functor.Compose (Compose (..))
-import Data.Proxy (Proxy (..))
+import           Data.Kind             (Type)
+import           Data.Functor.Compose  (Compose (..))
+--import           Data.Proxy            (Proxy (..))
 
-import qualified Data.Map as M
-import           Data.Hashable (Hashable)
-import qualified Data.HashMap.Strict as HM
-import qualified Data.IntMap  as IM
-import qualified Data.Array as A
+import qualified Data.Map              as M
+import           Data.Hashable         (Hashable)
+import qualified Data.HashMap.Strict   as HM
+import qualified Data.IntMap           as IM
+import qualified Data.Array            as A
+import qualified Data.Sequence         as S
+import qualified Data.Foldable         as F
+import           Data.Witherable        (Filterable(..))
 
 class Functor f => KeyedCollection (f :: Type -> Type) where
   type Key f :: Type
   mapWithKey :: (Key f -> a -> b) -> f a -> f b
   toKeyValueList :: f v -> [(Key f, v)]
   fromKeyValueList :: [(Key f ,v)] -> f v -- assumes Keys are distinct  
+
+instance (KeyedCollection f, Filterable f) => KeyedCollection (Compose f Maybe) where
+  type Key (Compose f Maybe) = Key f
+  mapWithKey =  composeMaybeMapWithKey
+  toKeyValueList = toKeyValueList . mapMaybe id . getCompose
+  fromKeyValueList = Compose . fmap Just . fromKeyValueList
+
+composeMaybeMapWithKey :: KeyedCollection f => (Key f -> a -> b) -> Compose f Maybe a -> Compose f Maybe b
+composeMaybeMapWithKey h =
+  let g k = fmap (h k)
+  in Compose . mapWithKey g . getCompose
 
 instance Ord k => KeyedCollection (M.Map k) where
   type Key (M.Map k) = k
@@ -68,10 +83,15 @@ arrayMapWithKey h arr =
       bounds = (minimum indices, maximum indices)
   in A.array bounds mapped
     
+instance KeyedCollection ([]) where
+  type Key ([]) = Int
+  mapWithKey h = fmap (uncurry h) . zip [0..]
+  toKeyValueList = zip [0..]
+  fromKeyValueList = fmap snd
 
-{-
-instance KeyedCollection ([(k,)] where
-  type Key ([(k,)] = k
-  type Diff ([(k,)]) = ([(k,)])
-  mapWithKey
--}
+instance KeyedCollection (S.Seq) where
+  type Key (S.Seq) = Int
+  mapWithKey = S.mapWithIndex
+  toKeyValueList = zip[0..] . F.toList
+  fromKeyValueList = S.fromList . fmap snd
+  

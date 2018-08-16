@@ -109,7 +109,8 @@ buildLBEMapLWK editOneValueWK mapDyn0 = do
   mapOfDyn <- listWithKeyGeneral mapDyn0 editW -- Dynamic t (M.Map k (Dynamic t (Maybe v)))
   return $ M.mapMaybe id <$> (join $ distributeMapOverDynPure <$> mapOfDyn)
 
-totalArrayBuildLBELWK :: forall t m k v. ( A.Ix k
+totalArrayBuildLBELWK :: forall t m k v. ( Enum k
+                                         , A.Ix k
                                          , Bounded k
                                          , WidgetConstraints t m k v)
                       => FieldWidgetWithKey t m k v -> ArrayEditF t m k v

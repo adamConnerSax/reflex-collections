@@ -34,12 +34,13 @@ import           Data.Functor.Misc       (Const2 (..))
 import           Data.Functor.Identity   (Identity(..))                 
 import           Data.Proxy              (Proxy (..))
 import           Data.Kind               (Type)
+import qualified Data.Foldable           as F
 
 import           Data.IntMap             (IntMap)
 import qualified Data.IntMap             as IM
-import           Data.Array             (Array, Ix)
-import qualified Data.Array             as A
-
+import           Data.Array              (Array, Ix)
+import qualified Data.Array              as A
+import qualified Data.Sequence           as S
 
 -- generic to and from ComposedIntMap for Keyed collections
 -- can be optimized for collections that have to/from ascending lists
@@ -78,14 +79,27 @@ instance IntMapIso IntMap where
 intMapWithFunctorToDMap :: Functor g => IntMap (g v) -> DMap (Const2 Int v) g
 intMapWithFunctorToDMap = DM.fromDistinctAscList . fmap (\(k, v) -> Const2 k :=> v) . IM.toAscList
 
-{-
+
 instance IntMapIso ([]) where
-  type DMapKey List = Int
+  type DMapKey ([]) = Const2 Int
   toComposedIntMapWithFunctor = ComposedIntMap . Compose . IM.fromAscList . zip [0..]
   fromComposedIntMap = fmap (runIdentity . snd) . IM.toAscList . getCompose . unCI
   makePatch _ h =
-    ComposedPatchIntMap . Compose . R.PatchIntMap . IM.fromAscList . zip [0..] . fmap (\(k,v) -> Just $ h k v) . unArrayDiff
--}  
+    ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv)) . getCompose
+  makeDMapKey _ = Const2
+  toFanInput = DM.fromAscList . fmap (\(n,v) -> Const2 n :=> Identity v) . zip [0..]
+  diffToFanInput _ = intMapWithFunctorToDMap . IM.mapMaybe (fmap Identity) . getCompose
+
+instance IntMapIso (S.Seq) where
+  type DMapKey (S.Seq) = Const2 Int
+  toComposedIntMapWithFunctor = ComposedIntMap . Compose . IM.fromAscList . zip [0..] . F.toList
+  fromComposedIntMap = S.fromList . fmap (runIdentity . snd) . IM.toAscList . getCompose . unCI
+  makePatch _ h =
+    ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv)) . getCompose
+  makeDMapKey _ = Const2
+  toFanInput = DM.fromAscList . fmap (\(n,v) -> Const2 n :=> Identity v) . zip [0..] . F.toList
+  diffToFanInput _ = intMapWithFunctorToDMap . IM.mapMaybe (fmap Identity) . getCompose
+  
 -- this only works for an array which has an element for every value of the key
 -- could be made slightly more general, getting the ints from position in a larger set
 -- but would be finicky and sacrifice some performance in the conversions. I think.

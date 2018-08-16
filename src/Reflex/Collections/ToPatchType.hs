@@ -34,8 +34,10 @@ import           Reflex.Collections.Sequenceable ( ReflexMergeable(..)
                                                  , PatchSequenceable(..)
                                                  , ReflexSequenceable(..))
                  
-import           Reflex.Collections.DMapIso (DMapIso(..))
+import qualified Reflex.Collections.DMapIso as DMI
+import qualified Reflex.Collections.IntMapIso as IMI
 import           Reflex.Collections.Diffable (Diffable(..), MapDiff, ArrayDiff(..))
+
 
 import qualified Reflex as R
 
@@ -114,13 +116,13 @@ instance SeqTypes (Map k) v where
   type SeqPatchType (Map k) v = PatchDMap (Const2 k v)
 
 instance Ord k => ToPatchType (Map k) where
-  type FanSelectKey (Map k) = Const2 k 
-  withFunctorToSeqType = toDMapWithFunctor
-  makePatchSeq = makePatch 
-  fromSeqType = fromDMap
-  makeSelectKey _ _ = Const2
-  doFan =  R.fan . fmap (toDMapWithFunctor . fmap Identity)
-  diffToFanType _ = withFunctorToSeqType . fmap Identity . M.mapMaybe id . getCompose
+  type FanSelectKey (Map k) = Const2 k
+  withFunctorToSeqType = DMI.toDMapWithFunctor
+  makePatchSeq = DMI.makePatch 
+  fromSeqType = DMI.fromDMap
+  makeSelectKey pf _ = DMI.makeDMapKey pf
+  doFan =  R.fan . fmap (DMI.toDMapWithFunctor . fmap Identity)
+  diffToFanType = DMI.diffToFanInput --withFunctorToSeqType . fmap Identity . M.mapMaybe id . g44etCompose
 
 instance SeqTypes (HashMap k) v where
   type SeqType (HashMap k) v = DMap (Const2 k v)
@@ -128,18 +130,16 @@ instance SeqTypes (HashMap k) v where
 
 instance (Ord k, Eq k, Hashable k) => ToPatchType (HashMap k) where
   type FanSelectKey (HashMap k) = Const2 k
-  withFunctorToSeqType = toDMapWithFunctor
-  makePatchSeq = makePatch
-  fromSeqType = fromDMap
+  withFunctorToSeqType = DMI.toDMapWithFunctor
+  makePatchSeq = DMI.makePatch
+  fromSeqType = DMI.fromDMap
   makeSelectKey _ _ = Const2
-  doFan =  R.fan . fmap (toDMapWithFunctor . fmap Identity)
-  diffToFanType _ = withFunctorToSeqType . fmap Identity . HM.mapMaybe id . getCompose
+  doFan =  R.fan . fmap (DMI.toDMapWithFunctor . fmap Identity)
+  diffToFanType = DMI.diffToFanInput --withFunctorToSeqType . fmap Identity . HM.mapMaybe id . getCompose
   
-instance SeqTypes IntMap v where
-  type SeqType IntMap v = ComposedIntMap v
-  type SeqPatchType IntMap v = ComposedPatchIntMap v
 
-toComposedIntMapWithFunctor :: Functor g => IntMap (g v) -> ComposedIntMap v g
+{-
+toComposedIMWithFunctor :: Functor g => IntMap (g v) -> ComposedIntMap v g
 toComposedIntMapWithFunctor = ComposedIntMap . Compose 
 
 fromComposedIntMap :: ComposedIntMap v Identity -> IntMap v
@@ -148,31 +148,40 @@ fromComposedIntMap = fmap runIdentity . getCompose . unCI
 -- This assumes GCompare (DMap (Const2 Int v)) is compatible with (Ord Int)
 dmapToIntMap :: DMap (Const2 Int v) g -> IntMap (g v)
 dmapToIntMap = IM.fromAscList . fmap (\((Const2 n) :=> gv) -> (n, gv)) . DM.toAscList
+-}
 
 intMapToDMap :: IntMap (g v) -> DMap (Const2 Int v) g
 intMapToDMap = DM.fromAscList . fmap (\(n, gv) -> (Const2 n) :=> gv) . IM.toAscList 
 
+-- these will all come from IntMapIso functions
+
+instance SeqTypes IntMap v where
+  type SeqType IntMap v = ComposedIntMap v
+  type SeqPatchType IntMap v = ComposedPatchIntMap v
+
 instance ToPatchType IntMap where
   type FanSelectKey IntMap = Const2 Int 
-  withFunctorToSeqType = toComposedIntMapWithFunctor
-  fromSeqType = fromComposedIntMap
-  makePatchSeq _ h = ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\k mv -> (fmap (h k) mv)) . getCompose
-  makeSelectKey _ _ = Const2
+  withFunctorToSeqType = IMI.toComposedIntMapWithFunctor
+  fromSeqType = IMI.fromComposedIntMap
+  makePatchSeq = IMI.makePatch 
+  makeSelectKey pf _ = IMI.makeDMapKey pf
   doFan = R.fan . fmap (intMapToDMap . fmap Identity)
-  diffToFanType _ = intMapToDMap . fmap Identity . IM.mapMaybe id . getCompose
+  diffToFanType = IMI.diffToFanInput 
 
 instance SeqTypes (Array k) v where
-  type SeqType (Array k) v = DMap (Const2 k v)
-  type SeqPatchType (Array k) v = PatchDMap (Const2 k v)
+  type SeqType (Array k) v = ComposedIntMap v
+  type SeqPatchType (Array k) v = ComposedPatchIntMap v
 
-instance Ix k => ToPatchType (Array k) where
+instance (Enum k, Bounded k, Ix k) => ToPatchType (Array k) where
   type FanSelectKey (Array k) = Const2 k
-  withFunctorToSeqType = toDMapWithFunctor
-  fromSeqType = fromDMap
-  makePatchSeq = makePatch
-  makeSelectKey _ _ = Const2
-  doFan = R.fan . fmap (withFunctorToSeqType . fmap Identity)
-  diffToFanType _ = DM.fromList . fmap (\(k,v) -> Const2 k :=> Identity v) . unArrayDiff
+  withFunctorToSeqType = IMI.toComposedIntMapWithFunctor
+  fromSeqType = IMI.fromComposedIntMap
+  makePatchSeq = IMI.makePatch
+  makeSelectKey pf _  = IMI.makeDMapKey pf
+  doFan = R.fan . fmap (DMI.keyedCollectionToDMapWithFunctor . fmap Identity)
+  diffToFanType = IMI.diffToFanInput
+
+
 
 {-
 newtype DMappable f v = DMappable { unDMappable :: f v } deriving (Functor, Foldable)

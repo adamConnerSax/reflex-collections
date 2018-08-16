@@ -32,7 +32,8 @@ library
   exposed-modules:
                   Reflex.Collections.Collections
                   Reflex.Collections.CollectionsDM
-                  Reflex.Collections.CollectionsIM                  
+                  Reflex.Collections.CollectionsIM
+                  Reflex.Collections.CollectionsIso                  
                   Reflex.Collections.ComposedIntMap
                   Reflex.Collections.DMappable
                   Reflex.Collections.DMapIso
