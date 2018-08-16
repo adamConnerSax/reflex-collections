@@ -10,11 +10,12 @@ Along the way, we get more polymorphic versions of `Reflex.mergeMap` (`Reflex.Co
 
 There are several typeclasses, each of which abstracts out a piece of the functionality required for the listXXX functions to operate on a collection:
 
-1. A typeclass supporting efficient merging/sequencing (`m (t a) -> t (m a)`) for the `Reflex.Event` and `Reflex.Dynamic` types: `Reflex.Collections.Sequenceable.ReflexSequenceable` (with instances for `DMap` and `IntMap`)
-2. A typeclass with a collection and patch type supporting efficient sequencing of a collection and patch as well as reconstruction of that pair into a `Reflex.Dynamic`: `Reflex.Collections.Sequenceable.PatchSequenceable` (with an instance for the pair `DMap` and `PatchDMap` as well the pair `ComposedIntMap` and `ComposedPatchIntMap`)
-3. A utility class representing the ability to map over the collection using the key (whatever that means for the collection): `Reflex.Collections.KeyedCollection.KeyedCollection` (with instances for `Ord k => Map k`, `Hashable k => HashMap k`, `IntMap` and `Ix k => Array k`)
-4. A class representing the difference between two collections: `Reflex.Collections.Diffable.Diffable` (with instances for `Ord k => Map k`, `Hashable k => HashMap k`, `IntMap` and `Ix k => Array k`)
-5. A class for keyed, diffable, collection types which can be converted to and from the sequenceable type: `Reflex.Collections.ToPatchType` (with instances for `Ord k => Map k`, `Hashable k => HashMap k`, `IntMap` and `Ix k => Array k`).  This class also contains functions for doing event fans on the container and its Diff.
+1. A typeclass supporting efficient "merging" for the `Reflex.Event` type, that is turning a collection of events into an event of a collection with members only for fired events: `Reflex.Collections.Sequenceable.ReflexMergeable` (with instances for `DMap` and `IntMap`)
+2. 1. A typeclass supporting efficient sequencing (`m (t a) -> t (m a)`) for the `Reflex.Dynamic` type: `Reflex.Collections.Sequenceable.ReflexSequenceable` (with instances for `DMap` and `IntMap`)
+3. A typeclass with a collection and patch type supporting efficient sequencing of a collection and patch as well as reconstruction of that pair into a `Reflex.Dynamic`: `Reflex.Collections.Sequenceable.PatchSequenceable` (with an instance for the pair `DMap` and `PatchDMap` as well the pair `ComposedIntMap` and `ComposedPatchIntMap`)
+4. A utility class representing the ability to map over the collection using the key (whatever that means for the collection): `Reflex.Collections.KeyedCollection.KeyedCollection` (with instances for `Ord k => Map k`, `Hashable k => HashMap k`, `IntMap` and `Ix k => Array k`)
+5. A class representing the difference between two collections: `Reflex.Collections.Diffable.Diffable` (with instances for `Ord k => Map k`, `Hashable k => HashMap k`, `IntMap` and `Ix k => Array k`)
+6. A class for keyed, diffable, collection types which can be converted to and from the sequenceable type: `Reflex.Collections.ToPatchType` (with instances for `Ord k => Map k`, `Hashable k => HashMap k`, `IntMap` and `Ix k => Array k`).  This class also contains functions for doing event fans on the container and its Diff.
 
 
 There are also Typeclasses to simplify support for the case of a collection which is isomorphic to some efficient collection management type for.
