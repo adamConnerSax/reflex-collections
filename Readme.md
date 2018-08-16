@@ -10,8 +10,8 @@ Along the way, we get more polymorphic versions of `Reflex.mergeMap` (`Reflex.Co
 
 There are several typeclasses, each of which abstracts out a piece of the functionality required for the listXXX functions to operate on a collection:
 
-1. A typeclass supporting efficient merging/sequencing (`m (t a) -> t (m a)`) for the `Reflex.Event` and `Reflex.Dynamic` types: `Reflex.Collections.Sequenceable.ReflexSequenceable` (with an instance for `DMap`)
-2. A typeclass with a collection and patch type supporting efficient sequencing of a collection and patch as well as reconstruction of that pair into a `Reflex.Dynamic`: `Reflex.Collections.Sequenceable.PatchSequenceable` (with an instance for the pair `DMap` and `PatchDMap`)
+1. A typeclass supporting efficient merging/sequencing (`m (t a) -> t (m a)`) for the `Reflex.Event` and `Reflex.Dynamic` types: `Reflex.Collections.Sequenceable.ReflexSequenceable` (with instances for `DMap` and `IntMap`)
+2. A typeclass with a collection and patch type supporting efficient sequencing of a collection and patch as well as reconstruction of that pair into a `Reflex.Dynamic`: `Reflex.Collections.Sequenceable.PatchSequenceable` (with an instance for the pair `DMap` and `PatchDMap` as well the pair `ComposedIntMap` and `ComposedPatchIntMap`)
 3. A utility class representing the ability to map over the collection using the key (whatever that means for the collection): `Reflex.Collections.KeyedCollection.KeyedCollection` (with instances for `Ord k => Map k`, `Hashable k => HashMap k`, `IntMap` and `Ix k => Array k`)
 4. A class representing the difference between two collections: `Reflex.Collections.Diffable.Diffable` (with instances for `Ord k => Map k`, `Hashable k => HashMap k`, `IntMap` and `Ix k => Array k`)
 5. A class for keyed, diffable, collection types which can be converted to and from the sequenceable type: `Reflex.Collections.ToPatchType` (with instances for `Ord k => Map k`, `Hashable k => HashMap k`, `IntMap` and `Ix k => Array k`).  This class also contains functions for doing event fans on the container and its Diff.
