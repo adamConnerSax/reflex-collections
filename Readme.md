@@ -3,7 +3,7 @@ reflex-collections
 A re-implementation of the collection functions from Reflex.  
 
 This library reimplements `listHoldWithKey`, `listWithKey`, `list`, `listViewWithKey`, and `selectViewListWithKey` using some typeclass machinery to make these functions
-more polymorphic.  The originals operate only on `Ord k => Data.Map.Map` these will operate on `Map`, `IntMap` and `HashMap` and, if using only `listHoldWithKey`, will also 
+more polymorphic.  The originals operate only on `Ord k => Data.Map.Map` these will operate on `Map`, `IntMap`, `HashMap`, `[]`, `Data.Sequence.Seq`, and, if using only `listHoldWithKey`, will also 
 work on `(Enum k, Bounded k, Ix k) => Data.Array k`, a sort of "Total Map", holding a value of some sort for every `k`.  It should also be easy to add class instances for many collections so these functions will work on them directly.
 
 Along the way, we get more polymorphic versions of `Reflex.mergeMap` (`Reflex.Collections.Collections.mergeOver`) and `distributeMapOverDynPure` (`Reflex.Collections.Collections.distributeOverDynPure`).
@@ -18,9 +18,9 @@ There are several typeclasses, each of which abstracts out a piece of the functi
 
 
 There are also Typeclasses to simplify support for the case of a collection which is isomorphic to some efficient collection management type for.
-1. `DMapIso`, a typeclass representing the isomorphism in (`Reflex.Collections.DMapIso`)
-2. `IntMapIso`, a typeclass representing the isomorphism in (`Reflex.Collections.IntMapIso`)
-3. `HoldableIso`, a typeclass which can map the container type to a particular isomorphism.
+1. `DMapIso`, a typeclass representing the isomorphism in (`Reflex.Collections.DMapIso`) (instances for `Map k` and `HashMap k`)
+2. `IntMapIso`, a typeclass representing the isomorphism in (`Reflex.Collections.IntMapIso`) (instances for `IntMap`, `[]`, `Data.Sequence.Seq`, `(Ix k, Enum k, Bounded k) => Array k`)
+3. `HoldableIso`, a typeclass which can map the container type to a particular isomorphism. (instances for all of the above)
 
 The simple way to add a new collection type is to derive instances for `KeyedCollection`, `Diffable`, `DMapIso` or `IntMapIso` (as well as `Monoid`), then an instance of `HoldableIso` (which is trivial, see the bottom of `Reflex.Collections.CollectionsIso`)  and use the Iso versions of the collection management functions in `Reflex.Collections.CollectionsIso`
 
