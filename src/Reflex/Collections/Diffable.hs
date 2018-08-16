@@ -87,16 +87,7 @@ instance Ix k => Diffable (Array k) where
   diffOnlyKeyChanges _ _ = ArrayDiff []
   editDiffLeavingDeletes _ _ _ = ArrayDiff [] -- we could implement this partially but I don't think we need it.
 
-
 type MapDiff f = Compose f Maybe
-
-{-
-instance (KeyedCollection f, Filterable f) => KeyedCollection (MapDiff f) where
-  type Key (MapDiff f) = Key f
-  mapWithKey =  mapDiffMapWithKey
-  toKeyValueList = toKeyValueList . mapMaybe id . getCompose
-  fromKeyValueList = Compose . fmap Just . fromKeyValueList
--}
 
 instance Ord k => Diffable (Map k) where
   type Diff (Map k) = MapDiff (Map k)

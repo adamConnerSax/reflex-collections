@@ -27,9 +27,9 @@ module Reflex.Collections.CollectionsDM
 import           Reflex.Collections.Diffable        (Diffable (..))
 import           Reflex.Collections.DMappable       (DMappable (..))
 import           Reflex.Collections.KeyedCollection (KeyedCollection (Key))
+import           Reflex.Collections.ToPatchType     (FanSelectKey)
 
-import           Reflex.Collections.Collections     (FanSelectKey,
-                                                     listHoldWithKeyGeneral,
+import           Reflex.Collections.Collections     (listHoldWithKeyGeneral,
                                                      listViewWithKeyGeneral,
                                                      listWithKeyGeneral,
                                                      listWithKeyShallowDiffGeneral,

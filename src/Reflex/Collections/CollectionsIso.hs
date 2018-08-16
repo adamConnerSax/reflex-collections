@@ -17,8 +17,11 @@
 #endif
 module Reflex.Collections.CollectionsIso
   (
-    listHoldWithKeyIso
+    distributeOverDynPureIso
+  , mergeOverIso
+  , listHoldWithKeyIso
   , listWithKeyIso
+  , listIso
   , listViewWithKeyIso
   , listWithKeyShallowDiffIso
   , selectViewListWithKeyIso
@@ -29,11 +32,12 @@ import           Reflex.Collections.Diffable        (Diffable (..))
 import           Reflex.Collections.DMappable       (DMappable (..))
 import           Reflex.Collections.IntMappable     (IntMappable (..))
 import           Reflex.Collections.KeyedCollection (KeyedCollection (Key))
-import           Reflex.Collections.ToPatchType     (ToPatchType,SeqTypes(..))
-import           Reflex.Collections.Sequenceable    (PatchSequenceable, ReflexMergeable)
+import           Reflex.Collections.ToPatchType     (ToPatchType,SeqTypes(..), FanSelectKey)
+import           Reflex.Collections.Sequenceable    (PatchSequenceable, ReflexSequenceable, ReflexMergeable)
 
 
-import           Reflex.Collections.Collections     (FanSelectKey,
+import           Reflex.Collections.Collections     (distributeOverDynPure,
+                                                     mergeOver,
                                                      listHoldWithKeyGeneral,
                                                      listViewWithKeyGeneral,
                                                      listWithKeyGeneral,
@@ -72,6 +76,23 @@ class ( KeyedCollection (Wrapped f)
 
 type WrappedC f a = (SeqTypes (Wrapped f) a, PatchSequenceable (SeqType (Wrapped f) a) (SeqPatchType (Wrapped f) a), ReflexMergeable (SeqType (Wrapped f) a))
 
+
+distributeOverDynPureIso :: ( R.Reflex t
+                            , WrappedC f v
+                            , ReflexSequenceable (SeqType (Wrapped f) v)
+                            , HoldableIso f
+                            , HoldableC f)
+  => f (R.Dynamic t v) -> R.Dynamic t (f v)
+distributeOverDynPureIso = fmap unWrap . distributeOverDynPure . wrap   
+
+
+mergeOverIso :: ( R.Reflex t
+                , WrappedC f v
+                , HoldableIso f
+                , HoldableC f)
+  => f (R.Event t v) -> R.Event t (f v)
+mergeOverIso = fmap unWrap . mergeOver . wrap   
+
 listHoldWithKeyIso :: ( R.Adjustable t m
                       , R.MonadHold t m
                       , HoldableIso f
@@ -97,6 +118,16 @@ listWithKeyIso :: ( R.Adjustable t m
                   , DiffableC f)
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
 listWithKeyIso vals = fmap (fmap unWrap) . listWithKeyGeneral (wrap <$> vals)
+
+listIso :: ( R.Adjustable t m
+           , R.MonadHold t m
+           , R.PostBuild t m
+           , MonadFix m
+           , HoldableIso f
+           , WrappedC2 f v a
+           , DiffableC f)
+  => R.Dynamic t (f v) -> (R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
+listIso df mkChild = listWithKeyIso df (\_ dv -> mkChild dv)   
 
 
 listViewWithKeyIso ::  ( R.Adjustable t m

@@ -18,26 +18,19 @@ module Reflex.Collections.Collections
   (
     listHoldWithKeyGeneral
   , listWithKeyGeneral
-  , sampledListWithKey
+  , listGeneral
   , listViewWithKeyGeneral
   , listWithKeyShallowDiffGeneral
   , selectViewListWithKeyGeneral
+  , sampledListWithKey -- CAUTION!! Do not use in recursive context.
   , listViewWithKeyGeneral'
   , listWithKeyGeneral'
-  , toSeqType
   , mergeOver
   , distributeOverDynPure
-  , hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent
-  , sampledDiffableDynamicToInitialPlusKeyDiffEvent -- Use with caution!! May cause problems in recursive contexts
-  , Diffable(..)
-  , PatchSequenceable(..)
-  , KeyedCollection (..)
-  , ToPatchType(..)
   ) where
 
 
 import           Reflex.Collections.Diffable        (Diffable (..), toDiff)
---import           Reflex.Collections.HasFan          (HasFan (..))
 import           Reflex.Collections.KeyedCollection (KeyedCollection (..))
 import           Reflex.Collections.Sequenceable    (PatchSequenceable (..),
                                                      ReflexMergeable (..))
@@ -45,7 +38,7 @@ import           Reflex.Collections.ToPatchType     (SeqTypes (..),
                                                      ToPatchType (..),
                                                      distributeOverDynPure,
                                                      functorMappedToSeqType,
-                                                     mergeOver, toSeqType)
+                                                     mergeOver)
 
 import qualified Reflex                             as R
 
@@ -111,6 +104,18 @@ listWithKeyGeneral :: ( R.Adjustable t m
                       , GCompare (FanSelectKey f v))
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
 listWithKeyGeneral = listWithKeyGeneral' hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent
+
+-- | Create a dynamically-changing set of Event-valued widgets. In this case, ones that are indifferent to position
+listGeneral :: ( R.Adjustable t m
+               , R.PostBuild t m
+               , MonadFix m
+               , R.MonadHold t m
+               , PatchSeqC f a  -- for the listHold
+               , Monoid (f v)
+               , Functor (Diff f)
+               , GCompare (FanSelectKey f v))
+  => R.Dynamic t (f v) -> (R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
+listGeneral df mkChild = listWithKeyGeneral df (\_ dv -> mkChild dv)
 
 
 -- | Generalizes "listViewWithKey" which is a special case of listWithKey for Events.  The extra constraints are needed because
@@ -189,6 +194,8 @@ selectViewListWithKeyGeneral selection vals mkChild = do
     selectSelf <- mkChild k v selected
     return $ fmap ((,) k) selectSelf
   return $ R.switchPromptlyDyn $ R.leftmost . toList <$> selectChild
+
+
 
 
 -- If we have an empty state and can take diffs, we can use that to make a Dynamic into a initial empty plus diff events
