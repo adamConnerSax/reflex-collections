@@ -103,8 +103,8 @@ instance IntMapIso (S.Seq) where
 -- this only works for an array which has an element for every value of the key
 -- could be made slightly more general, getting the ints from position in a larger set
 -- but would be finicky and sacrifice some performance in the conversions. I think.
--- NB: Performing mergeOver on an array will lead to errors since the result won't have an event for each value of the key
--- should mergeOver return a Diff?
+-- NB: Performing mergeOver on an array will lead to errors since the result won't have an event for each value of the key. Could we fix with never?
+-- should it be mergeOver :: f (Event t a) -> Event t (Diff f a) ?  return a Diff? With maybe a "simpleMerge" version that returns the same type?
 instance (Enum k, Bounded k, A.Ix k) => IntMapIso (A.Array k) where
   type DMapKey (Array k) = Const2 k
   toComposedIntMapWithFunctor = ComposedIntMap . Compose . IM.fromAscList . zip [0..] . fmap snd . A.assocs  
