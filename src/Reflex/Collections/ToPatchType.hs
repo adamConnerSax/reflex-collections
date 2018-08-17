@@ -37,8 +37,7 @@ import           Reflex.Collections.Sequenceable ( ReflexMergeable(..)
                                                  , PatchSequenceable(..)
                                                  , ReflexSequenceable(..))
                  
-import qualified Reflex.Collections.DMapIso as DMI
-import qualified Reflex.Collections.IntMapIso as IMI
+
 import           Reflex.Collections.Diffable (Diffable(..), MapDiff, ArrayDiff(..))
 
 

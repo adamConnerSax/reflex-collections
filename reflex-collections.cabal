@@ -31,14 +31,7 @@ library
   hs-source-dirs: src
   exposed-modules:
                   Reflex.Collections.Collections
-                  Reflex.Collections.CollectionsDM
-                  Reflex.Collections.CollectionsIM
-                  Reflex.Collections.CollectionsIso                  
                   Reflex.Collections.ComposedIntMap
-                  Reflex.Collections.DMappable
-                  Reflex.Collections.DMapIso
-                  Reflex.Collections.IntMapIso
-                  Reflex.Collections.IntMappable                   
                   Reflex.Collections.Sequenceable
                   Reflex.Collections.KeyedCollection
                   Reflex.Collections.ToPatchType
