@@ -87,12 +87,11 @@ mergeOver fEv =
   let id2 = const id :: (k -> R.Event t v -> R.Event t v)
   in fmap fromSeqType . mergeEvents $ functorMappedToSeqType id2 fEv
 
--- NB: Performing mergeOver on an array will lead to errors since the result won't have an event for each value of the key. Could we fix with never?
--- should it be mergeOver :: f (Event t a) -> Event t (Diff f a) ?  return a Diff? With maybe a "simpleMerge" version that returns the same type?
+-- NB: Performing mergeOver on an array will lead to errors since the result won't have an event for each value of the key.
+-- Should it be mergeOver :: f (Event t a) -> Event t (Diff f a) ?
+-- With maybe a "simpleMerge" version that returns the same type?
 
-
-
--- | Type families for the sequenceable and patch types.  Always DMap for now
+-- | Type families for the sequenceable and patch types.
 class SeqTypes (f :: Type -> Type) (v :: Type) where
   type SeqType f v  :: (Type -> Type) -> Type
   type SeqPatchType f v :: (Type -> Type) -> Type
