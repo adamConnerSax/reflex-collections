@@ -58,8 +58,8 @@ import           Data.Hashable           (Hashable)
 import           Data.HashMap.Strict     (HashMap)
 import qualified Data.HashMap.Strict     as HM
 import           Data.Array (Array, Ix)
-
-
+import qualified Data.Sequence           as S
+import qualified Data.Foldable           as F
 
 toSeqType :: (Functor f, SeqTypes f v, ToPatchType f) => f v -> SeqType f v Identity
 toSeqType = withFunctorToSeqType . fmap Identity
@@ -141,19 +141,6 @@ instance (Ord k, Eq k, Hashable k) => ToPatchType (HashMap k) where
   doFan =  R.fan . fmap (DMI.toDMapWithFunctor . fmap Identity)
   diffToFanType = DMI.diffToFanInput --withFunctorToSeqType . fmap Identity . HM.mapMaybe id . getCompose
   
-
-{-
-toComposedIMWithFunctor :: Functor g => IntMap (g v) -> ComposedIntMap v g
-toComposedIntMapWithFunctor = ComposedIntMap . Compose 
-
-fromComposedIntMap :: ComposedIntMap v Identity -> IntMap v
-fromComposedIntMap = fmap runIdentity . getCompose . unCI
-
--- This assumes GCompare (DMap (Const2 Int v)) is compatible with (Ord Int)
-dmapToIntMap :: DMap (Const2 Int v) g -> IntMap (g v)
-dmapToIntMap = IM.fromAscList . fmap (\((Const2 n) :=> gv) -> (n, gv)) . DM.toAscList
--}
-
 intMapToDMap :: IntMap (g v) -> DMap (Const2 Int v) g
 intMapToDMap = DM.fromAscList . fmap (\(n, gv) -> (Const2 n) :=> gv) . IM.toAscList 
 
@@ -185,44 +172,30 @@ instance (Enum k, Bounded k, Ix k) => ToPatchType (Array k) where
   doFan = R.fan . fmap (DMI.keyedCollectionToDMapWithFunctor . fmap Identity)
   diffToFanType = IMI.diffToFanInput
 
+instance SeqTypes [] v where
+  type SeqType [] v = ComposedIntMap v
+  type SeqPatchType [] v = ComposedPatchIntMap v
 
+instance ToPatchType [] where
+  type FanSelectKey [] = Const2 Int 
+  withFunctorToSeqType = IMI.toComposedIntMapWithFunctor
+  fromSeqType = IMI.fromComposedIntMap
+  makePatchSeq = IMI.makePatch 
+  makeSelectKey pf _ = IMI.makeDMapKey pf
+  doFan = R.fan . fmap (DM.fromAscList . fmap (\(n,v) -> Const2 n :=> Identity v) . zip [0..])
+  diffToFanType = IMI.diffToFanInput 
 
-{-
-newtype DMappable f v = DMappable { unDMappable :: f v } deriving (Functor, Foldable)
+instance SeqTypes (S.Seq) v where
+  type SeqType (S.Seq) v = ComposedIntMap v
+  type SeqPatchType (S.Seq) v = ComposedPatchIntMap v
 
-instance KeyedCollection f => KeyedCollection (DMappable f) where
-  type Key (DMappable f) = Key f
-  mapWithKey h = DMappable . mapWithKey h . unDMappable
-  toKeyValueList = toKeyValueList . unDMappable
-  fromKeyValueList = DMappable . fromKeyValueList
+instance ToPatchType (S.Seq) where
+  type FanSelectKey (S.Seq) = Const2 Int 
+  withFunctorToSeqType = IMI.toComposedIntMapWithFunctor
+  fromSeqType = IMI.fromComposedIntMap
+  makePatchSeq = IMI.makePatch 
+  makeSelectKey pf _ = IMI.makeDMapKey pf
+  doFan = R.fan . fmap (DM.fromAscList . fmap (\(n,v) -> Const2 n :=> Identity v) . zip [0..] . F.toList)
+  diffToFanType = IMI.diffToFanInput 
 
-instance (KeyedCollection f, Diffable f) => Diffable (DMappable f) where
-  type Diff (DMappable f) = Diff f
-  mapDiffWithKey _ = mapDiffWithKey (Proxy :: Proxy f) -- use version from Diffable f since Diff is the same 
-  diffNoEq old new = diffNoEq (unDMappable old) (unDMappable new) 
-  diff old new = diff (unDMappable old) (unDMappable new)
-  applyDiff patch old = DMappable $ applyDiff patch (unDMappable old)
-  diffOnlyKeyChanges old new = diffOnlyKeyChanges (unDMappable old) (unDMappable new)
-  editDiffLeavingDeletes _ = editDiffLeavingDeletes (Proxy :: Proxy f)
-
-instance Monoid (f v) => Monoid (DMappable f v) where
-  mempty = DMappable mempty
-  mappend a b = DMappable $ mappend (unDMappable a) (unDMappable b) 
-    
-instance DMapIso f => SeqTypes (DMappable f) v where
-  type SeqType (DMappable f) v = DMap (DMapKey f v) 
-  type SeqPatchType (DMappable f) v = PatchDMap (DMapKey f v)
-
---instance DMapIso f => DMapIso (DMappable f) where
---  type DMapKey (DMappable f) = DMapKey f
---  toDMapWithFunctor = toDMapWithFunctor . unDMappable
---  fromDMap = DMappable . fromDMap
-
---instance DiffToPatchDMap f => DiffToPatchDMap (DMappable f) where
---  makePatch _ = makePatch (Proxy :: Proxy f)
-
-instance (KeyedCollection f, DMapIso f, DiffToPatchDMap f) => ToPatchType (DMappable f) where
-  withFunctorToSeqType = toDMapWithFunctor . unDMappable
-  fromSeqType = DMappable . fromDMap
-  makePatchSeq _ = makePatch (Proxy :: Proxy f)
--}
+  

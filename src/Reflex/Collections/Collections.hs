@@ -92,7 +92,6 @@ listWithKeyGeneral' toInitialPlusKeyDiffEvent vals mkChild = do
   listHoldWithKeyGeneral fv0 edfv $ \k v ->
     mkChild k =<< R.holdDyn v (R.select childValChangedSelector $ makeSelKey' k)
 
-
 -- | Create a dynamically-changing set of Event-valued widgets.
 listWithKeyGeneral :: ( R.Adjustable t m
                       , R.PostBuild t m
@@ -145,11 +144,6 @@ listViewWithKeyGeneral ::  ( R.Adjustable t m
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (f a))
 listViewWithKeyGeneral = listViewWithKeyGeneral' hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent
 
-
-
-
-
-
 -- | Display the given map of items (in key order) using the builder function provided, and update it with the given event.
 -- | 'Nothing' update entries will delete the corresponding children,
 -- | and 'Just' entries will create them if they do not exist or send an update event to them if they do.
@@ -169,7 +163,6 @@ listWithKeyShallowDiffGeneral initialVals valsChanged mkChild = do
   sentVals <- R.foldDyn applyDiff (mempty :: f ()) $ fmap void valsChanged
   listHoldWithKeyGeneral initialVals (R.attachWith (flip editDiffLeavingDeletes') (R.current (toDiff <$> sentVals)) valsChanged) $ \k v ->
     mkChild k v $ R.select childValChangedSelector $ makeSelKey' k
-
 
 -- | Create a dynamically-changing set of widgets, one of which is selected at any time.
 selectViewListWithKeyGeneral :: ( R.Adjustable t m
@@ -196,8 +189,6 @@ selectViewListWithKeyGeneral selection vals mkChild = do
   return $ R.switchPromptlyDyn $ R.leftmost . toList <$> selectChild
 
 
-
-
 -- If we have an empty state and can take diffs, we can use that to make a Dynamic into a initial empty plus diff events
 hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent :: forall t m f v. ( Diffable f
                                                                     , Monoid (f v)
@@ -215,8 +206,6 @@ hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent vals = mdo
                    , R.tag (R.current vals) postBuild
                    ] --TODO: This should probably be added to the attachWith, not to the updated; if we were using diffMap instead of diffMapNoEq, I think it might not work
   return $ (emptyContainer', changeVals)
-
-
 
 -- if we don't have an empty state (e.g., Array k v), we can sample but this is..not ideal.
 sampledDiffableDynamicToInitialPlusKeyDiffEvent :: forall t m f v. ( R.Reflex t
@@ -246,34 +235,3 @@ sampledListWithKey vals mkChild = listWithKeyGeneral' sampledDiffableDynamicToIn
 
 
 
-
--- Old Code
-{-
--- | Create a dynamically-changing set of Event-valued widgets.
-listWithKeyGeneral :: forall t m f k v a. ( R.Adjustable t m
-                                          , R.PostBuild t m
-                                          , MonadFix m
-                                          , R.MonadHold t m
-                                          , ToPatchType f k v a -- for the listHold
-                                          , Sequenceable (SeqType f k) (SeqPatchType f k) (SeqTypeKey f k a) -- for the listHold
-                                          , Diffable f (Diff f k)
-                                          , Functor (Diff f k)
-                                          , HasFan f v
-                                          , FanInKey f ~ k)
-  => R.Dynamic t (f v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
-listWithKeyGeneral vals mkChild = do
-  postBuild <- R.getPostBuild
-  let doFan' = doFan (Proxy :: Proxy v)
-      makeSelKey' = makeSelKey (Proxy :: Proxy f) (Proxy :: Proxy v)
-      emptyContainer' :: f v = emptyContainer (Proxy :: Proxy (Diff f k))
-
-      childValChangedSelector = doFan' $ R.updated vals
-  rec sentVals :: R.Dynamic t (f v) <- R.foldDyn applyDiff emptyContainer' changeVals
-      let changeVals :: R.Event t (Diff f k v)
-          changeVals = R.attachWith diffOnlyKeyChanges (R.current sentVals) $ R.leftmost
-                         [ R.updated vals
-                         , R.tag (R.current vals) postBuild --TODO: This should probably be added to the attachWith, not to the updated; if we were using diffMap instead of diffMapNoEq, I think it might not work
-                         ]
-  listHoldWithKeyGeneral emptyContainer' changeVals $ \k v ->
-    mkChild k =<< R.holdDyn v (R.select childValChangedSelector $ makeSelKey' k)
--}
