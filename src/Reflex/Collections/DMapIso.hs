@@ -112,23 +112,3 @@ instance Ix k => DMapIso (Array k) where
   makePatch _ h (ArrayDiff ad) =
     PatchDMap .  DM.fromList $ fmap (\(k, v) -> Const2 k :=> (ComposeMaybe . Just $ h k v)) ad
 
-{-
--- This class seems like it's purely for overloading.
-class (DMapIso f, KeyedCollection f, Diffable f) => DiffToPatchDMap (f :: Type -> Type) where
-  makePatch :: Functor g => Proxy f -> (Key f -> v -> g u) -> Diff f v -> PatchDMap (DMapKey f u) g
-
-instance Ord k => DiffToPatchDMap (Map k) where
-  makePatch _ h = PatchDMap . keyedCollectionToDMapWithFunctor . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) . getCompose   
-
--- TODO: DO we need Eq and Ord here or is that only because we are relying on KeyedCollection?
-instance (Eq k, Ord k, Hashable k) => DiffToPatchDMap (HashMap k) where
-  makePatch _ h = PatchDMap . keyedCollectionToDMapWithFunctor . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) . getCompose   
-
-instance DiffToPatchDMap IntMap where
-  makePatch _ h = PatchDMap . keyedCollectionToDMapWithFunctor . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) . getCompose   
-
--- TODO: DO we need Ord here or is that only because we are relying on KeyedCollection?  
-instance (Ix k, Ord k) => DiffToPatchDMap (Array k) where
-  makePatch _ h (ArrayDiff ad) = PatchDMap .  DM.fromList $ fmap (\(k, v) -> Const2 k :=> (ComposeMaybe . Just $ h k v)) ad
-
--}

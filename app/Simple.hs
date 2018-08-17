@@ -9,34 +9,31 @@
 {-# LANGUAGE RecursiveDo           #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TupleSections         #-}
-import           GHCJS.DOM.Types                   (JSM)
-import           Language.Javascript.JSaddle.Warp  (run)
+import           GHCJS.DOM.Types                  (JSM)
+import           Language.Javascript.JSaddle.Warp (run)
 import           Reflex
-import           Reflex.Dom                        hiding (mainWidget, run)
-import           Reflex.Dom.Core                   (mainWidget)
-import           Reflex.Dom.Old                    (MonadWidget)
+import           Reflex.Dom                       hiding (mainWidget, run)
+import           Reflex.Dom.Core                  (mainWidget)
+import           Reflex.Dom.Old                   (MonadWidget)
 
-import           Control.Monad                     (join)
-import           Control.Monad.Fix                 (MonadFix)
-import           Data.Bool                         (bool)
+import           Control.Monad                    (join)
+import           Control.Monad.Fix                (MonadFix)
+import           Data.Bool                        (bool)
 
 
-import qualified Data.IntMap                       as IM
-import qualified Data.Map                          as M
+import qualified Data.IntMap                      as IM
+import qualified Data.Map                         as M
 --import           Data.Maybe                       (fromJust, isNothing)
 --import           Data.Monoid                      ((<>))
 --import           Data.Proxy                       (Proxy (..))
-import qualified Data.Text                         as T
+import qualified Data.Text                        as T
 
-import           System.Process                    (spawnProcess)
-import           Text.Read                         (Read, readMaybe)
+import           System.Process                   (spawnProcess)
+import           Text.Read                        (Read, readMaybe)
 
 --import           Safe                             (headMay)
 
 import           Reflex.Collections.Collections
-import           Reflex.Collections.CollectionsDM
-import           Reflex.Collections.CollectionsIM
-import           Reflex.Collections.CollectionsIso
 
 -- NB: This is just for warp.
 main::IO ()
@@ -70,7 +67,7 @@ testWidget = mainWidget $ do
   bigBreak
 
   el "h3" $ text "Now we feed it instead to listViewWithKey to show that the widgets are not rebuilt. But notice that *all* even when any 1 input changes. Can we fix that too?"
-  mapEv2 <- listViewWithKeyIso mapDyn0 (pairWidget id)
+  mapEv2 <- listViewWithKeyGeneral mapDyn0 (pairWidget id)
   mapDyn2 <- foldDyn M.union x0 mapEv2
   dynText $ fmap (T.pack . show) mapDyn2
 
@@ -81,7 +78,7 @@ testWidget = mainWidget $ do
   dynText $ fmap (T.pack . show) intMapDyn0
 
   smallBreak
-  intMapEv1 <- listViewWithKeyIso intMapDyn0 (pairWidget (T.pack . show))
+  intMapEv1 <- listViewWithKeyGeneral intMapDyn0 (pairWidget (T.pack . show))
   intMapDyn1 <- foldDyn IM.union xIntMap intMapEv1
   dynText $ fmap (T.pack . show) intMapDyn1
   return ()
