@@ -30,7 +30,8 @@ module Reflex.Collections.Collections
   ) where
 
 
-import           Reflex.Collections.Diffable        (Diffable (..), toDiff)
+import           Reflex.Collections.Diffable        (Diff, Diffable (..),
+                                                     toDiff)
 import           Reflex.Collections.KeyedCollection (KeyedCollection (..))
 import           Reflex.Collections.Sequenceable    (PatchSequenceable (..),
                                                      ReflexMergeable (..))

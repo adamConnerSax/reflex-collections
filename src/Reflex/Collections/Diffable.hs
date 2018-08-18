@@ -21,6 +21,7 @@ module Reflex.Collections.Diffable
   , Diff (..)
   , mapDiffWithKey
   , toDiff
+  , elemUpdateToMaybe
 --  , ArrayDiff(..)
 --  , MapDiff
   ) where
@@ -222,7 +223,7 @@ listApplyDiff :: (Functor f, Filterable f) =>
 listApplyDiff zipWithF lengthF dropF appendF diff old =
   let d = getCompose . unDiff $ diff
       overlap = zipWithF applyEU d old
-      additionalDiff = fmap euToMaybe (dropF (lengthF overlap) d)
+      additionalDiff = fmap elemUpdateToMaybe (dropF (lengthF overlap) d)
       additionalOld = fmap Just (dropF (lengthF overlap) old)
     in mapMaybe id (overlap `appendF` additionalDiff `appendF` additionalOld) 
 
@@ -263,10 +264,10 @@ applyEU NoChange x = Just x
 applyEU Delete x = Nothing
 applyEU (NewValue x) _ = Just x
 
-euToMaybe :: ElemUpdate a -> Maybe a
-euToMaybe NoChange = Nothing
-euToMaybe Delete = Nothing
-euToMaybe (NewValue x) = Just x
+elemUpdateToMaybe :: ElemUpdate a -> Maybe a
+elemUpdateToMaybe NoChange = Nothing
+elemUpdateToMaybe Delete = Nothing
+elemUpdateToMaybe (NewValue x) = Just x
 
 
   
