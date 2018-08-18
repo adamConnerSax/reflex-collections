@@ -143,7 +143,7 @@ buildLBEMapLVWKSD editOneValueWK mapDyn0 = mdo
   newInputMapEv <- dynAsEv mapDyn0
   updateEvsDyn <- listWithKeyShallowDiffGeneral M.empty diffMapEv editW -- Dynamic t (Map k (Event t (Maybe v)))
   let mapEditsEv =  switch $ mergeMap <$> current updateEvsDyn -- Event t (Map k (Maybe v))
-      diffMapEv = Compose . fmap Just <$> newInputMapEv
+      diffMapEv = toDiff <$> newInputMapEv --Compose . fmap Just <$> newInputMapEv
       editedMapEv = attachWith (flip applyMap) (current mapDyn) mapEditsEv
       newMapEv = leftmost [newInputMapEv, editedMapEv]
   mapDyn <- holdDyn M.empty newMapEv

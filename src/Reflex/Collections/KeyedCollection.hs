@@ -20,7 +20,6 @@ module Reflex.Collections.KeyedCollection
 
 import           Data.Kind             (Type)
 import           Data.Functor.Compose  (Compose (..))
---import           Data.Proxy            (Proxy (..))
 
 import qualified Data.Map              as M
 import           Data.Hashable         (Hashable)

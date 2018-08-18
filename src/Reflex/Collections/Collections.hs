@@ -27,6 +27,7 @@ module Reflex.Collections.Collections
   , listWithKeyGeneral'
   , mergeOver
   , distributeOverDynPure
+  , toDiff
   ) where
 
 
@@ -65,10 +66,8 @@ listHoldWithKeyGeneral :: forall t m f v a. ( R.Adjustable t m
                                             , PatchSeqC f a)
   => f v -> R.Event t (Diff f v) -> (Key f -> v -> m a) -> m (R.Dynamic t (f a))
 listHoldWithKeyGeneral c0 c' h = do
-  let pf = Proxy :: Proxy f
-      makePatchSeq' = makePatchSeq pf
-      dc0 = functorMappedToSeqType h c0
-      dc' = fmap (makePatchSeq' h) c'
+  let dc0 = functorMappedToSeqType h c0
+      dc' = fmap (makePatchSeq h) c'
   (a0 ,a') <- sequenceWithPatch dc0 dc'
   fmap fromSeqType <$> patchPairToDynamic a0 a'
 
@@ -158,11 +157,9 @@ listWithKeyShallowDiffGeneral :: forall t m f v a.( R.Adjustable t m
   => f v -> R.Event t (Diff f v) -> (Key f -> v -> R.Event t v -> m a) -> m (R.Dynamic t (f a))
 listWithKeyShallowDiffGeneral initialVals valsChanged mkChild = do
   let makeSelKey' = makeSelectKey (Proxy :: Proxy f) (Proxy :: Proxy v)
-      fanDiff' = doDiffFan (Proxy :: Proxy f)
-      editDiffLeavingDeletes' = editDiffLeavingDeletes (Proxy :: Proxy f)
-      childValChangedSelector = fanDiff' valsChanged
+      childValChangedSelector = doDiffFan valsChanged
   sentVals <- R.foldDyn applyDiff (mempty :: f ()) $ fmap void valsChanged
-  listHoldWithKeyGeneral initialVals (R.attachWith (flip editDiffLeavingDeletes') (R.current (toDiff <$> sentVals)) valsChanged) $ \k v ->
+  listHoldWithKeyGeneral initialVals (R.attachWith (flip editDiffLeavingDeletes) (R.current (toDiff <$> sentVals)) valsChanged) $ \k v ->
     mkChild k v $ R.select childValChangedSelector $ makeSelKey' k
 
 -- | Create a dynamically-changing set of widgets, one of which is selected at any time.
