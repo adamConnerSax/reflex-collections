@@ -90,12 +90,6 @@ testWidget = mainWidget $ do
 
   -- NB: fmap sequence . join . fmap sequence :: Dynamic [Dynamic (Maybe a)] -> Dynamic (Maybe [a])
 
-  -- this doesn't work as expected!  How do you add list updates?  I guess that's sort of the point.
-  smallBreak
-  listMDyn1 <- fmap sequence . join . fmap sequence <$> listWithKeyGeneral listDyn0 (pairWidgetDyn (T.pack . show))
-  listDyn1 <- holdDyn xList $ leftmost [updated listDyn0, (fmapMaybe id . updated $ listMDyn1)]
-  dynText $ fmap (T.pack . show) listDyn1
-
   return ()
 
 
