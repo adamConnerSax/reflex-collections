@@ -27,12 +27,8 @@ import           Data.Dependent.Map     (DMap, GCompare)
 import           Data.Functor.Misc      (Const2 (..))
 import           Control.Monad.Identity (Identity (..))
 import           Data.Kind              (Type)
---import           Data.IntMap            (IntMap)
 import qualified Data.IntMap            as IM
 import           Data.Functor.Compose   (Compose(..), getCompose)
---import           Data.Semigroup         (Semigroup(..),stimesIdempotentMonoid)
---import           Data.Monoid            (Monoid)
-
 
 -- | This class carries the ability to do an efficient event merge
 -- "Merge a collection of events.  The resulting event will occur if at least one input event is occuring
