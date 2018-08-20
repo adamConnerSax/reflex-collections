@@ -50,7 +50,7 @@ import qualified Data.Array             as A
 import qualified Data.Sequence          as S
 import qualified Data.Foldable          as F
 
-class (Functor f, Foldable f, Traversable f) => MapLike f where
+class Functor f => MapLike f where
   mlEmpty :: f a
   mlUnion :: f a -> f a -> f a -- left preferring union
   mlDifference :: f a -> f b -> f a -- remove from left any element whose key appears in right
@@ -74,7 +74,7 @@ instance (Eq k, Hashable k) => MapLike (HM.HashMap k) where
   mlMapMaybe = HM.mapMaybe
   mlDifferenceWith = HM.differenceWith
 
-instance MapLike IM.IntMap where
+instance MapLike IntMap where
   mlEmpty = IM.empty
   mlUnion = IM.union
   mlDifference = IM.difference
@@ -82,70 +82,50 @@ instance MapLike IM.IntMap where
   mlMapMaybe = IM.mapMaybe
   mlDifferenceWith = IM.differenceWith
 
-{-
-instance MapLike f => MapLike (Compose f Maybe) where
-  mlEmpty = Compose $ mlEmpty
-  mlUnion a b = Compose $ mlUnion (getCompose a) (getCompose b)
-  mlDifference a  b = Compose $ (getCompose a) (getCompose b)
-  mlFilter f = let g = maybe False id . fmap f in Compose . mlFilter g . getCompose -- this filters out Nothing and predicate = False
-  mlMapMaybe = Compose . fmap Just . mlMapMaybe . fmap join . getCompose 
--}
-
-
 -- f is the container
 -- Diff f has the operations to make and combine subsets
 -- we patch f using Diff 
 
-
-
 -- Given that the diff is MapLike, we can write default versions for everything except mapDiffWithkey
 class ( KeyedCollection f
       , KeyedCollection (Diff f)
---      , Key f ~ Key (Diff f)
       , MapLike (Diff f)
       , Align (Diff f)) => Diffable (f :: Type -> Type) where
   type Diff f :: Type -> Type -- keyed collection of ElemUpdates
-  fromDiffKey :: Proxy f -> Key (Diff f) -> Key f
   toDiff :: f a -> Diff f a -- a diff such that patch _ (toDiff x) = x
   patch :: f a -> Diff f a -> f a -- update f using a Diff, often ignores initial argument 
 
 instance Ord k => Diffable (Map k) where
   type Diff (Map k) = Map k
-  fromDiffKey _ = id
   toDiff = id
   patch _ = id
 
 instance (Eq k, Hashable k) => Diffable (HashMap k) where
   type Diff (HashMap k) = HashMap k
-  fromDiffKey _ = id
   toDiff = id
   patch _ = id
 
 instance Diffable IntMap where
   type Diff IntMap = IntMap
-  fromDiffKey _ = id
   toDiff = id
   patch _ = id
 
 instance Diffable ([]) where
   type Diff ([]) = IntMap
-  fromDiffKey _ = id
   toDiff = IM.fromAscList . zip [0..]
   patch _ = fmap snd . IM.toAscList
 
 instance Diffable (S.Seq) where
   type Diff (S.Seq) = IntMap
-  fromDiffKey _ = id
   toDiff = IM.fromAscList . zip [0..] . F.toList
   patch _ = S.fromList . fmap snd . IM.toAscList
   
 instance (Enum k, Ix k) => Diffable (Array k) where
   type Diff (Array k) = IntMap
-  fromDiffKey _ = toEnum
   toDiff = IM.fromAscList . fmap (\(k,v) -> (fromEnum k, v)) . A.assocs
   patch old x = old A.// (fmap (\(n,v) -> (toEnum n,v)) $ IM.toAscList x) -- Array must keep old ones if no update.  It's "Total"
   
--- a patch is ready to be made back into the original type but how depends on the type
+-- a patch is ready to be made back into the original type but how depends on the type, via "patch"
 createPatch :: Diffable f => Diff f (Maybe v) -> f v -> Diff f v
 createPatch diff old =
   let deletions = mlFilter isNothing diff

@@ -205,7 +205,7 @@ hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent vals = mdo
   postBuild <- R.getPostBuild
   let emptyContainer' = mempty
   sentVals :: R.Dynamic t (f v) <- R.foldDyn applyDiff emptyContainer' changeVals
-  let changeVals :: R.Event t (Diff f v)
+  let changeVals :: R.Event t (Diff f (Maybe v))
       changeVals = R.attachWith diffOnlyKeyChanges (R.current sentVals) $ R.leftmost
                    [ R.updated vals
                    , R.tag (R.current vals) postBuild
@@ -221,7 +221,7 @@ sampledDiffableDynamicToInitialPlusKeyDiffEvent :: forall t m f v. ( R.Reflex t
 sampledDiffableDynamicToInitialPlusKeyDiffEvent vals = do
   v0 <- R.sample . R.current $ vals
   rec sentVals :: R.Dynamic t (f v) <- R.foldDyn applyDiff v0 changeVals
-      let changeVals :: R.Event t (Diff f v)
+      let changeVals :: R.Event t (Diff f (Maybe v))
           changeVals = R.attachWith diffOnlyKeyChanges (R.current sentVals) $ R.updated vals
   return $ (v0, changeVals)
 
