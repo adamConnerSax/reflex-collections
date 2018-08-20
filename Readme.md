@@ -6,7 +6,7 @@ This library reimplements `listHoldWithKey`, `listWithKey`, `list`, `listViewWit
 more polymorphic.  The originals operate only on `Ord k => Data.Map.Map k` these will operate on `Map`, `IntMap`, `HashMap`, `[]`, `Data.Sequence.Seq`, and, for only `listHoldWithKey`, will also 
 work on `(Enum k, Bounded k, Ix k) => Data.Array k`, a sort of "Total Map", holding a value for every `k`.  It should also be easy to add class instances for many collections so these functions will work on them directly.
 
-Along the way, we get more polymorphic versions of `Reflex.mergeMap` (`Reflex.Collections.Collections.mergeOver`) and `distributeMapOverDynPure` (`Reflex.Collections.Collections.distributeOverDynPure`).
+Along the way, we get more polymorphic versions of `Reflex.mergeMap` (`Reflex.Collections.Collections.mergeOver`) and `distributeMapOverDynPure` (`Reflex.Collections.Collections.distributeOverDynPure`).  `mergeOver` returns `Event t (Diff f a)` rather than `Event t (f a)` since events will only fire on subsets and subsets don't make sense for all containers, though they do for all diffs. 
 
 There are several typeclasses, each of which abstracts out a piece of the functionality required for the listXXX functions to operate on a collection:
 
@@ -21,7 +21,7 @@ To add a new collection type from scratch, you need instances of `KeyedCollectio
 
 Notes:
 1.  If we could build a Dynamic starting from the current value of another Dynamic but without the perils of sample, we could get rid of the Monoid constraint.  Which would also allow containers which are "total," that is have values for all keys, to be used for more than `listHoldWithKey`. 
-
+2. I've changed the interface for listViewWithKey slightly, returning `R.Event t (Diff f v)` instead of `R.Event t (f v)`.  For a total container, one with items for all keys, the original version doesn't make sense.  Our events will be for subsets of the keys.  
 ----
 
 Building:
