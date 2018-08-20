@@ -30,13 +30,9 @@ import           Reflex.Collections.KeyedCollection (KeyedCollection(..))
 
 import           Data.Proxy             (Proxy (..))
 import           Data.Kind              (Type)
-import           Data.Functor.Compose   (Compose(..))
 import           Data.Align             (Align(..))
 import           Data.These             (These(..))
-import           Data.Foldable          (foldl')
 import           Data.Maybe             (isNothing)
-import           Data.Monoid            (Monoid(mempty))
---import           Data.Witherable        (Filterable(..))
 
 import           Data.Map               (Map)
 import qualified Data.Map               as M
@@ -82,11 +78,12 @@ instance MapLike IntMap where
   mlMapMaybe = IM.mapMaybe
   mlDifferenceWith = IM.differenceWith
 
--- f is the container
--- Diff f has the operations to make and combine subsets
--- we patch f using Diff 
+-- (f a) is the container
+-- (Diff f a) has the operations to make and combine subsets, usually using Diff f (Maybe a)
+-- we make a new f using and old f and Diff, since sometimes Diff loses information required to reconstruct. E.g., Diff (Array k) = Map k
+-- and (Array k) needs a value for each key which Map may not have one.
 
--- Given that the diff is MapLike, we can write default versions for everything except mapDiffWithkey
+-- this class has the one law: patch _ (toDiff x) = x
 class ( KeyedCollection f
       , KeyedCollection (Diff f)
       , MapLike (Diff f)
@@ -127,9 +124,9 @@ instance (Enum k, Ix k) => Diffable (Array k) where
   
 -- a patch is ready to be made back into the original type but how depends on the type, via "patch"
 createPatch :: Diffable f => Diff f (Maybe v) -> f v -> Diff f v
-createPatch diff old =
-  let deletions = mlFilter isNothing diff
-      insertions = mlMapMaybe id  $ diff `mlDifference` deletions
+createPatch d old =
+  let deletions = mlFilter isNothing d
+      insertions = mlMapMaybe id  $ d `mlDifference` deletions
   in insertions `mlUnion` ((toDiff old) `mlDifference` deletions)
 
 applyDiff :: Diffable f => Diff f (Maybe v) -> f v -> f v
@@ -155,7 +152,7 @@ diffOnlyKeyChanges old new = flip mlMapMaybe (align (toDiff old) (toDiff new)) $
   
 editDiffLeavingDeletes :: Diffable f => Proxy f -> Diff f (Maybe v) -> Diff f b -> Diff f (Maybe v)
 editDiffLeavingDeletes _ da db =
-  let relevantPatch patch _ = case patch of
+  let relevantPatch p _ = case p of
         Nothing -> Just Nothing -- it's a delete
         Just _  -> Nothing -- remove from diff
   in mlDifferenceWith relevantPatch da db

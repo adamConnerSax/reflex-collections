@@ -63,13 +63,14 @@ import qualified Data.Sequence           as S
 import qualified Data.Foldable           as F
 
 -- | Generalize distributeMapOverDynPure
+-- NB: Use of "unsafeFromSeqType" is okay here since we know there is a value for every key in the input
 distributeOverDynPure :: ( R.Reflex t
                          , ToPatchType f
                          , SeqTypes f v
                          , PatchSequenceable (SeqType f v) (SeqPatchType f v)
                          , ReflexSequenceable (SeqType f v))
   => f (R.Dynamic t v) -> R.Dynamic t (f v)
-distributeOverDynPure = fmap fromSeqType . sequenceDynamic . withFunctorToSeqType
+distributeOverDynPure = fmap unsafeFromSeqType . sequenceDynamic . withFunctorToSeqType
 
 -- | Generalizes "mergeMap" to anything with ToPatchType where the Patches are Sequenceable.
 mergeOver :: forall t f v. ( R.Reflex t
@@ -77,10 +78,10 @@ mergeOver :: forall t f v. ( R.Reflex t
                            , SeqTypes f v
                            , PatchSequenceable (SeqType f v) (SeqPatchType f v)
                            , ReflexMergeable (SeqType f v))
-  => f (R.Event t v) -> R.Event t (f v)
+  => f (R.Event t v) -> R.Event t (Diff f v)
 mergeOver fEv =
   let id2 = const id :: (k -> R.Event t v -> R.Event t v)
-  in fmap fromSeqType . mergeEvents $ functorMappedToSeqType id2 fEv
+  in fmap (fromSeqType (Proxy :: Proxy f)) . mergeEvents $ functorMappedToSeqType id2 fEv
 
 -- NB: Performing mergeOver on an array will lead to errors since the result won't have an event for each value of the key.
 -- Should it be mergeOver :: f (Event t a) -> Event t (Diff f a) ?
@@ -94,12 +95,14 @@ class SeqTypes (f :: Type -> Type) (v :: Type) where
 -- This class has the capabilities to translate f v and its difftype into types
 -- that are sequenceable, and then bring the original type back
 -- This requires that the Diff type be mapped to the correct type for diffing at the sequenceable level (e.g., as a DMap).
--- I think, if we had quantified constraints, we could add (forall v. GCompare (FanSelectKey f v))
+-- I think, if we had quantified constraints, we could add (forall v. GCompare (FanSelectKey f v)) here and it would be simpler.
 -- might be able to do it now with Data.Constraint.Forall but that would propagate complication
+
 class (KeyedCollection f, Diffable f) => ToPatchType (f :: Type -> Type) where
   type FanKey f :: Type -> Type -> Type -- NB: This is a key for a DMap since fan uses DMap
   withFunctorToSeqType :: SeqTypes f v => Functor g => f (g v) -> SeqType f v g
-  fromSeqType :: SeqTypes f a => SeqType f a Identity -> f a
+  fromSeqType :: SeqTypes f a => Proxy f -> SeqType f a Identity -> Diff f a
+  unsafeFromSeqType :: SeqTypes f a => SeqType f a Identity -> f a -- may fail for some types if keys are missing
   makePatchSeq :: (Functor g, SeqTypes f u) => Proxy f -> (Key f -> v -> g u) -> Diff f (Maybe v) -> SeqPatchType f u g
   makeFanKey :: Proxy f -> Proxy v -> Key f -> FanKey f v v
   doFan :: (R.Reflex t, DM.GCompare (FanKey f v))=> R.Event t (f v) -> R.EventSelector t (FanKey f v)
@@ -107,9 +110,7 @@ class (KeyedCollection f, Diffable f) => ToPatchType (f :: Type -> Type) where
   doDiffFan :: (R.Reflex t, DM.GCompare (FanKey f v)) => Proxy f -> R.Event t (Diff f (Maybe v)) -> R.EventSelector t (FanKey f v)
   doDiffFan pf = R.fan . fmap (diffToFanType pf) 
   
-
 -- Map and HashMap use DMap for merging and sequencing
-
 
 instance SeqTypes (Map k) v where
   type SeqType (Map k) v = DMap (Const2 k v)
@@ -120,7 +121,8 @@ instance Ord k => ToPatchType (Map k) where
   withFunctorToSeqType = mapWithFunctorToDMap
   makePatchSeq _ h =
     PatchDMap . keyedCollectionWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv))   
-  fromSeqType = dmapToMap
+  fromSeqType _ = dmapToMap
+  unsafeFromSeqType = patch M.empty . fromSeqType (Proxy :: Proxy (Map k))
   makeFanKey _ _ = Const2
   doFan =  R.fan . fmap mapToDMap
   diffToFanType _ = keyedCollectionToDMap . mlMapMaybe id
@@ -134,12 +136,13 @@ instance (Ord k, Eq k, Hashable k) => ToPatchType (HashMap k) where
   withFunctorToSeqType = keyedCollectionWithFunctorToDMap
   makePatchSeq _ h =
     PatchDMap . keyedCollectionWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) 
-  fromSeqType = dmapToKeyedCollection
+  fromSeqType _ = dmapToKeyedCollection
+  unsafeFromSeqType = patch HM.empty . fromSeqType (Proxy :: Proxy (HashMap k))
   makeFanKey _ _ = Const2
   doFan =  R.fan . fmap keyedCollectionToDMap
   diffToFanType _ = keyedCollectionToDMap . mlMapMaybe id
 
--- IntMap, [], Seq, Array use IntMap for their merging and sequencing
+-- IntMap, [], Seq, and Array use IntMap for their merging and sequencing
   
 instance SeqTypes IntMap v where
   type SeqType IntMap v = ComposedIntMap v
@@ -148,7 +151,8 @@ instance SeqTypes IntMap v where
 instance ToPatchType IntMap where
   type FanKey IntMap = Const2 Int 
   withFunctorToSeqType = ComposedIntMap . Compose
-  fromSeqType = fmap runIdentity . getCompose . unCI
+  fromSeqType _ = fmap runIdentity . getCompose . unCI
+  unsafeFromSeqType = patch IM.empty . fromSeqType (Proxy :: Proxy IntMap)
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv)) 
   makeFanKey _ _ = Const2
@@ -162,7 +166,8 @@ instance SeqTypes [] v where
 instance ToPatchType [] where
   type FanKey [] = Const2 Int 
   withFunctorToSeqType = ComposedIntMap . Compose . IM.fromAscList . zip [0..]
-  fromSeqType = fmap (runIdentity . snd) . IM.toAscList . getCompose . unCI
+  fromSeqType _ = fmap runIdentity . getCompose . unCI
+  unsafeFromSeqType = patch [] . fromSeqType (Proxy :: Proxy ([]))
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv)) 
   makeFanKey _ _ = Const2 
@@ -176,7 +181,8 @@ instance SeqTypes (S.Seq) v where
 instance ToPatchType (S.Seq) where
   type FanKey (S.Seq) = Const2 Int 
   withFunctorToSeqType = ComposedIntMap . Compose . IM.fromAscList . zip [0..] . F.toList
-  fromSeqType = S.fromList . fmap (runIdentity . snd) . IM.toAscList . getCompose . unCI
+  fromSeqType _ = fmap runIdentity . getCompose . unCI
+  unsafeFromSeqType = patch S.empty . fromSeqType (Proxy :: Proxy (S.Seq))
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv))
   makeFanKey _ _ = Const2
@@ -195,12 +201,13 @@ instance SeqTypes (Array k) v where
 instance (Enum k, Bounded k, Ix k) => ToPatchType (Array k) where
   type FanKey (Array k) = Const2 k
   withFunctorToSeqType = ComposedIntMap . Compose . IM.fromAscList . zip [0..] . fmap snd . A.assocs  
-  fromSeqType = A.listArray (minBound,maxBound) . fmap (runIdentity . snd) . IM.toAscList . getCompose . unCI
+  fromSeqType _ = fmap runIdentity . getCompose . unCI
+  unsafeFromSeqType = A.listArray (minBound,maxBound) . fmap snd . IM.toAscList . fromSeqType (Proxy :: Proxy (Array k))
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> fmap (h $ toEnum n) mv) -- IM.fromAscList . zip [0..] . fmap (\(k,v) -> Just $ h k v) 
   makeFanKey _ _  = Const2 
   doFan = R.fan . fmap keyedCollectionToDMap
-  diffToFanType _ = intMapToDMapWithKey toEnum . mlMapMaybe id --DM.fromDistinctAscList . fmap (\(k,v) -> Const2 k :=> Identity v) 
+  diffToFanType _ = intMapToDMapWithKey toEnum . mlMapMaybe id
 
 
 -- various utilities for converting to and from underlying Patchable or Fannable types

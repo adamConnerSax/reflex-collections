@@ -31,11 +31,8 @@ module Reflex.Collections.Collections
 
 
 import           Reflex.Collections.Diffable        (Diffable (..), applyDiff,
-                                                     createPatch, diff,
-                                                     diffNoEq,
                                                      diffOnlyKeyChanges,
-                                                     editDiffLeavingDeletes,
-                                                     mlEmpty)
+                                                     editDiffLeavingDeletes)
 import           Reflex.Collections.KeyedCollection (KeyedCollection (..))
 import           Reflex.Collections.Sequenceable    (PatchSequenceable (..),
                                                      ReflexMergeable (..))
@@ -55,7 +52,7 @@ import           Data.Proxy                         (Proxy (..))
 
 -- If we only want to support ghc8+, we could replace proxies with type application.
 
--- NB: This also implies Diffable f and KeyedCollection f since they are superclasses of ToPatchType f
+-- NB: This also implies Diffable f (and thus KeyedCollection f, KeyedCollection (Diff f), MapLike (Diff f)) since Diffable is a superclasses of ToPatchType
 type PatchSeqC f a = (SeqTypes f a, PatchSequenceable (SeqType f a) (SeqPatchType f a), ToPatchType f)
 
 -- | Sequenceable and ToPatch are enough for listHoldWithKey
@@ -64,6 +61,7 @@ type PatchSeqC f a = (SeqTypes f a, PatchSequenceable (SeqType f a) (SeqPatchTyp
 -- That 2nd point would be simpler if you could sample.
 -- NB: incrementalToDynamic applies the patch to the original so the Diff type here
 -- (or, really, whatever makePatchSeq turns it into), must be consistent.
+-- NB: use of unsafeFromSeqType is okay here.  We are updating an initial container which has values for all keys if required.
 listHoldWithKeyGeneral :: forall t m f v a. ( R.Adjustable t m
                                             , R.MonadHold t m
                                             , PatchSeqC f a)
@@ -74,7 +72,7 @@ listHoldWithKeyGeneral c0 c' h = do
       dc0 = functorMappedToSeqType h c0
       dc' = fmap (makePatchSeq' h) c'
   (a0 ,a') <- sequenceWithPatch dc0 dc'
-  fmap fromSeqType <$> patchPairToDynamic a0 a'
+  fmap unsafeFromSeqType <$> patchPairToDynamic a0 a'
 
 
 -- With quantified constraints, I think we can put the GCompare constraint on ToPatchType via
@@ -124,6 +122,8 @@ listGeneral df mkChild = listWithKeyGeneral df (\_ dv -> mkChild dv)
 
 -- | Generalizes "listViewWithKey" which is a special case of listWithKey for Events.  The extra constraints are needed because
 -- this uses all the machinery of sequencing (DMaps) twice: once for the inner listWithKey and then again for the merging of events.
+-- NB: This returns Event t (Diff f a) since we can't a-priori, know that we can construct f a from Diff f a.  Though for maps and lists we can.
+-- But for total containers, e.g., Array k, we cannot since we will get events on only some keys but an Array k must have a value for all keys.
 listViewWithKeyGeneral' ::  ( R.Adjustable t m
                             , R.PostBuild t m
                             , R.MonadHold t m
@@ -132,7 +132,7 @@ listViewWithKeyGeneral' ::  ( R.Adjustable t m
                             , ReflexMergeable (SeqType f a)
                             , GCompare (FanKey f v))
   => (R.Dynamic t (f v) -> m (f v, R.Event t (Diff f (Maybe v))))
-  -> R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (f a))
+  -> R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
 listViewWithKeyGeneral' toEv vals mkChild =
   R.switch . R.current . fmap mergeOver <$> listWithKeyGeneral' toEv vals mkChild
 
@@ -146,7 +146,7 @@ listViewWithKeyGeneral ::  ( R.Adjustable t m
                            , ReflexMergeable (SeqType f a)
                            , Monoid (f v)
                            , GCompare (FanKey f v))
-  => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (f a))
+  => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
 listViewWithKeyGeneral = listViewWithKeyGeneral' hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent
 
 -- | Display the given map of items (in key order) using the builder function provided, and update it with the given event.
