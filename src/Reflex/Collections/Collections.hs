@@ -30,12 +30,12 @@ module Reflex.Collections.Collections
   ) where
 
 
-import           Reflex.Collections.Diffable        (Diffable (..)
-                                                    , createPatch
-                                                    , diff
-                                                    , diffNoEq
-                                                    , diffOnlyKeyChanges
-                                                    , editDiffLeavingDeletes)
+import           Reflex.Collections.Diffable        (Diffable (..), applyDiff,
+                                                     createPatch, diff,
+                                                     diffNoEq,
+                                                     diffOnlyKeyChanges,
+                                                     editDiffLeavingDeletes,
+                                                     mlEmpty)
 import           Reflex.Collections.KeyedCollection (KeyedCollection (..))
 import           Reflex.Collections.Sequenceable    (PatchSequenceable (..),
                                                      ReflexMergeable (..))
@@ -165,9 +165,8 @@ listWithKeyShallowDiffGeneral initialVals valsChanged mkChild = do
       fanDiff' = doDiffFan (Proxy :: Proxy f)
       editDiffLeavingDeletes' = editDiffLeavingDeletes (Proxy :: Proxy f)
       childValChangedSelector = fanDiff' valsChanged
-      applyDiff = 
-  sentVals <- R.foldDyn applyDiff (mempty :: f ()) $ fmap void valsChanged
-  listHoldWithKeyGeneral initialVals (R.attachWith (flip editDiffLeavingDeletes') (R.current (toDiff <$> sentVals)) valsChanged) $ \k v ->
+  sentVals <- R.foldDyn applyDiff (void initialVals) $ fmap (fmap void) valsChanged
+  listHoldWithKeyGeneral initialVals (R.attachWith (flip editDiffLeavingDeletes') (toDiff <$> R.current sentVals) valsChanged) $ \k v ->
     mkChild k v $ R.select childValChangedSelector $ makeFanKey' k
 
 -- | Create a dynamically-changing set of widgets, one of which is selected at any time.

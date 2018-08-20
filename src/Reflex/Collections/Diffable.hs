@@ -19,6 +19,7 @@ module Reflex.Collections.Diffable
     Diffable(..)
   , MapLike(..)
   , createPatch
+  , applyDiff
   , diff
   , diffNoEq
   , diffOnlyKeyChanges
@@ -151,6 +152,9 @@ createPatch diff old =
       insertions = mlMapMaybe id  $ diff `mlDifference` deletions
   in insertions `mlUnion` ((toDiff old) `mlDifference` deletions)
 
+applyDiff :: Diffable f => Diff f (Maybe v) -> f v -> f v
+applyDiff d f = patch f (createPatch d f)
+
 diffNoEq :: Diffable f => f v -> f v -> Diff f (Maybe v)
 diffNoEq old new =  flip fmap (align (toDiff old) (toDiff new)) $ \case
   This _ -> Nothing -- delete
@@ -169,7 +173,7 @@ diffOnlyKeyChanges old new = flip mlMapMaybe (align (toDiff old) (toDiff new)) $
   These _ _ -> Nothing
   That n -> Just $ Just n
   
-editDiffLeavingDeletes :: Diffable f => Proxy f -> Diff f (Maybe v) -> Diff f (Maybe v) -> Diff f (Maybe v)
+editDiffLeavingDeletes :: Diffable f => Proxy f -> Diff f (Maybe v) -> Diff f b -> Diff f (Maybe v)
 editDiffLeavingDeletes _ da db =
   let relevantPatch patch _ = case patch of
         Nothing -> Just Nothing -- it's a delete
