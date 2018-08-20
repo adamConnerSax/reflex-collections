@@ -12,6 +12,7 @@
 {-# LANGUAGE DefaultSignatures     #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE UndecidableInstances #-}
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
 #endif
@@ -23,8 +24,8 @@ module Reflex.Collections.ToPatchType
   , functorMappedToSeqType
   , distributeOverDynPure
   , mergeOver
-  , MapDiff
-  , ArrayDiff(..)
+--  , MapDiff
+--  , ArrayDiff(..)
   , keyedCollectionWithFunctorToDMap
   , keyedCollectionToDMap
   , dmapToKeyedCollection
@@ -38,7 +39,7 @@ import           Reflex.Collections.Sequenceable ( ReflexMergeable(..)
                                                  , ReflexSequenceable(..))
                  
 
-import           Reflex.Collections.Diffable (Diffable(..), MapDiff, ArrayDiff(..))
+import           Reflex.Collections.Diffable (Diffable(..), MapLike(..))
 
 
 import qualified Reflex as R
@@ -102,14 +103,17 @@ class SeqTypes (f :: Type -> Type) (v :: Type) where
 -- I think, if we had quantified constraints, we could add (forall v. GCompare (FanSelectKey f v))
 -- might be able to do it now with Data.Constraint.Forall but that would propagate complication
 class (KeyedCollection f, Diffable f) => ToPatchType (f :: Type -> Type) where
-  type FanSelectKey f :: Type -> Type -> Type -- NB: This is a key for a DMap since fan uses DMap
+  type FanKey f :: Type -> Type -> Type -- NB: This is a key for a DMap since fan uses DMap
+  type FanKey f = Const2 (Key f)
+  type DiffFanKey f :: Type -> Type -> Type
+  type DiffFanKey f = Const2 (Key (Diff f))
   withFunctorToSeqType :: SeqTypes f v => Functor g => f (g v) -> SeqType f v g
   fromSeqType :: SeqTypes f a => SeqType f a Identity -> f a
-  makePatchSeq :: (Functor g, SeqTypes f u) => Proxy f -> (Key f -> v -> g u) -> Diff f v -> SeqPatchType f u g
-  makeSelectKey :: Proxy f -> Proxy v -> Key f -> FanSelectKey f v v
-  doFan :: (R.Reflex t, DM.GCompare (FanSelectKey f v))=> R.Event t (f v) -> R.EventSelector t (FanSelectKey f v)
-  diffToFanType :: Proxy f -> Diff f v -> DMap (FanSelectKey f v) Identity 
-  doDiffFan :: (R.Reflex t, DM.GCompare (FanSelectKey f v)) => Proxy f -> R.Event t (Diff f v) -> R.EventSelector t (FanSelectKey f v)
+  makePatchSeq :: (Functor g, SeqTypes f u) => Proxy f -> (Key f -> v -> g u) -> Diff f (Maybe v) -> SeqPatchType f u g
+  makeFanKey :: Proxy f -> Proxy v -> Key f -> FanKey f v v
+  doFan :: (R.Reflex t, DM.GCompare (FanKey f v))=> R.Event t (f v) -> R.EventSelector t (FanKey f v)
+  diffToFanType :: Proxy f -> Diff f (Maybe v) -> DMap (DiffFanKey f v) Identity 
+  doDiffFan :: (R.Reflex t, DM.GCompare (DiffFanKey f v)) => Proxy f -> R.Event t (Diff f (Maybe v)) -> R.EventSelector t (DiffFanKey f v)
   doDiffFan pf = R.fan . fmap (diffToFanType pf) 
   
 functorMappedToSeqType :: (SeqTypes f u, ToPatchType f) => Functor g => (Key f -> v -> g u) -> f v -> SeqType f u g
@@ -133,28 +137,28 @@ instance SeqTypes (Map k) v where
   type SeqPatchType (Map k) v = PatchDMap (Const2 k v)
 
 instance Ord k => ToPatchType (Map k) where
-  type FanSelectKey (Map k) = Const2 k
+--  type FanSelectKey (Map k) = Const2 k
   withFunctorToSeqType = mapWithFunctorToDMap
   makePatchSeq _ h =
-    PatchDMap . keyedCollectionWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) . getCompose   
+    PatchDMap . keyedCollectionWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv))   
   fromSeqType = dmapToMap
-  makeSelectKey _ _ = Const2
+  makeFanKey _ _ = Const2
   doFan =  R.fan . fmap mapToDMap
-  diffToFanType _ = mapWithFunctorToDMap . M.mapMaybe (fmap Identity) . getCompose  
+  diffToFanType _ = keyedCollectionToDMap . mlMapMaybe id
 
 instance SeqTypes (HashMap k) v where
   type SeqType (HashMap k) v = DMap (Const2 k v)
   type SeqPatchType (HashMap k) v = PatchDMap (Const2 k v)
 
 instance (Ord k, Eq k, Hashable k) => ToPatchType (HashMap k) where
-  type FanSelectKey (HashMap k) = Const2 k
+--  type FanSelectKey (HashMap k) = Const2 k
   withFunctorToSeqType = keyedCollectionWithFunctorToDMap
   makePatchSeq _ h =
-    PatchDMap . keyedCollectionWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) . getCompose   
+    PatchDMap . keyedCollectionWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) 
   fromSeqType = dmapToKeyedCollection
-  makeSelectKey _ _ = Const2
+  makeFanKey _ _ = Const2
   doFan =  R.fan . fmap keyedCollectionToDMap
-  diffToFanType _ = keyedCollectionToDMap . HM.mapMaybe id . getCompose
+  diffToFanType _ = keyedCollectionToDMap . mlMapMaybe id
 
 -- IntMap, [], Seq, Array use IntMap for their merging and sequencing
   
@@ -180,42 +184,42 @@ instance SeqTypes IntMap v where
   type SeqPatchType IntMap v = ComposedPatchIntMap v
 
 instance ToPatchType IntMap where
-  type FanSelectKey IntMap = Const2 Int 
+--  type FanSelectKey IntMap = Const2 Int 
   withFunctorToSeqType = ComposedIntMap . Compose
   fromSeqType = fmap runIdentity . getCompose . unCI
   makePatchSeq _ h =
-    ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv)) . getCompose    
-  makeSelectKey _ _ = Const2
+    ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv)) 
+  makeFanKey _ _ = Const2
   doFan = R.fan . fmap intMapToDMap
-  diffToFanType _ = intMapWithFunctorToDMap . IM.mapMaybe (fmap Identity) . getCompose
+  diffToFanType _ = intMapToDMap . mlMapMaybe id
 
 instance SeqTypes [] v where
   type SeqType [] v = ComposedIntMap v
   type SeqPatchType [] v = ComposedPatchIntMap v
 
 instance ToPatchType [] where
-  type FanSelectKey [] = Const2 Int 
+--  type FanSelectKey [] = Const2 Int 
   withFunctorToSeqType = ComposedIntMap . Compose . IM.fromAscList . zip [0..]
   fromSeqType = fmap (runIdentity . snd) . IM.toAscList . getCompose . unCI
   makePatchSeq _ h =
-    ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv)) . getCompose    
-  makeSelectKey _ _ = Const2 
+    ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv)) 
+  makeFanKey _ _ = Const2 
   doFan = R.fan . fmap (DM.fromAscList . fmap (\(n,v) -> Const2 n :=> Identity v) . zip [0..])
-  diffToFanType _ = intMapWithFunctorToDMap . IM.mapMaybe (fmap Identity) . getCompose
+  diffToFanType _ = intMapToDMap . mlMapMaybe id
 
 instance SeqTypes (S.Seq) v where
   type SeqType (S.Seq) v = ComposedIntMap v
   type SeqPatchType (S.Seq) v = ComposedPatchIntMap v
 
 instance ToPatchType (S.Seq) where
-  type FanSelectKey (S.Seq) = Const2 Int 
+--  type FanSelectKey (S.Seq) = Const2 Int 
   withFunctorToSeqType = ComposedIntMap . Compose . IM.fromAscList . zip [0..] . F.toList
   fromSeqType = S.fromList . fmap (runIdentity . snd) . IM.toAscList . getCompose . unCI
   makePatchSeq _ h =
-    ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv)) . getCompose    
-  makeSelectKey _ _ = Const2
+    ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv))
+  makeFanKey _ _ = Const2
   doFan = R.fan . fmap (DM.fromAscList . fmap (\(n,v) -> Const2 n :=> Identity v) . zip [0..] . F.toList)
-  diffToFanType _ = intMapWithFunctorToDMap . IM.mapMaybe (fmap Identity) . getCompose
+  diffToFanType _ = intMapToDMap . mlMapMaybe id
 
 -- this only works for an array which has an element for every value of the key
 -- could be made slightly more general, getting the ints from position in a larger set
@@ -227,13 +231,14 @@ instance SeqTypes (Array k) v where
   type SeqPatchType (Array k) v = ComposedPatchIntMap v
 
 instance (Enum k, Bounded k, Ix k) => ToPatchType (Array k) where
-  type FanSelectKey (Array k) = Const2 k
+  --type FanSelectKey (Array k) = Const2 k
   withFunctorToSeqType = ComposedIntMap . Compose . IM.fromAscList . zip [0..] . fmap snd . A.assocs  
   fromSeqType = A.listArray (minBound,maxBound) . fmap (runIdentity . snd) . IM.toAscList . getCompose . unCI
   makePatchSeq _ h =
-    ComposedPatchIntMap . Compose . R.PatchIntMap . IM.fromAscList . zip [0..] . fmap (\(k,v) -> Just $ h k v) . unArrayDiff    
-  makeSelectKey _ _  = Const2
+    let g n = h (fromDiffKey (Proxy :: Proxy (Array k)) n) 
+    in ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> fmap (g n) mv) -- IM.fromAscList . zip [0..] . fmap (\(k,v) -> Just $ h k v) 
+  makeFanKey _ _  = Const2 
   doFan = R.fan . fmap keyedCollectionToDMap
-  diffToFanType _ = DM.fromDistinctAscList . fmap (\(k,v) -> Const2 k :=> Identity v) . unArrayDiff 
+  diffToFanType _ = intMapToDMap . mlMapMaybe id --DM.fromDistinctAscList . fmap (\(k,v) -> Const2 k :=> Identity v) 
 
   

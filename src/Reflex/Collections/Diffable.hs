@@ -10,19 +10,22 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE DefaultSignatures     #-}
+{-# LANGUAGE LambdaCase            #-}
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
 #endif
 module Reflex.Collections.Diffable
   (
     Diffable(..)
-  , ArrayDiff(..)
-  , MapDiff
-  , toDiff
+  , MapLike(..)
+  , createPatch
+  , diff
+  , diffNoEq
+  , diffOnlyKeyChanges
+  , editDiffLeavingDeletes
   ) where
 
-import           Reflex.Collections.KeyedCollection ( KeyedCollection(..)
-                                                    , composeMaybeMapWithKey)
+import           Reflex.Collections.KeyedCollection (KeyedCollection(..))
 
 import           Data.Proxy             (Proxy (..))
 import           Data.Kind              (Type)
@@ -46,141 +49,129 @@ import qualified Data.Array             as A
 import qualified Data.Sequence          as S
 import qualified Data.Foldable          as F
 
--- | Given a diffable collection that has an empty state, we can make a diff such that "applyDiff empty . toDiff = id"  
--- We are using the existence of a monoid instance to indicate a meaningful empty state (mempty)
-toDiff :: (Monoid (f v), Diffable f) => f v -> Diff f v
-toDiff = flip diffNoEq mempty
+class (Functor f, Foldable f, Traversable f) => MapLike f where
+  mlEmpty :: f a
+  mlUnion :: f a -> f a -> f a -- left preferring union
+  mlDifference :: f a -> f b -> f a -- remove from left any element whose key appears in right
+  mlFilter :: (a -> Bool) -> f a -> f a
+  mlMapMaybe :: (a -> Maybe b) -> f a -> f b  -- is this always `mlMaybe f = mlFilter (maybe False (const True) . f) `?
+  mlDifferenceWith :: (a -> b -> Maybe a) -> f a -> f b -> f a 
 
--- encapsulates the ability to diff two containers and then apply the diff to regain the original
--- also supports a Map.difference style operation on the diff itself (for splitting out value updates)
--- diffOnlyKeyChanges and editDiffLeavingDeletes are both too specific, I think.
--- NB: applyDiffD (diffD x y) y = x
-class Diffable (f :: Type -> Type) where
-  type Diff f :: Type -> Type
-  mapDiffWithKey :: KeyedCollection f => Proxy f -> (Key f -> a -> b) -> Diff f a -> Diff f b
-  diffNoEq :: f v -> f v -> Diff f v 
-  diff :: Eq v => f v -> f v -> Diff f v
-  applyDiff :: Diff f v -> f v -> f v
-  diffOnlyKeyChanges :: f v -> f v -> Diff f v 
-  editDiffLeavingDeletes :: Proxy f -> Diff f v -> Diff f u -> Diff f v -- this removes 2nd diff from first, except when first indicates a delete. May not generalize.
+instance Ord k => MapLike (M.Map k) where
+  mlEmpty = M.empty
+  mlUnion = M.union
+  mlDifference = M.difference
+  mlFilter = M.filter
+  mlMapMaybe = M.mapMaybe
+  mlDifferenceWith = M.differenceWith
 
-newtype ArrayDiff k v = ArrayDiff { unArrayDiff :: [(k,v)] }
+instance (Eq k, Hashable k) => MapLike (HM.HashMap k) where
+  mlEmpty = HM.empty
+  mlUnion = HM.union
+  mlDifference = HM.difference
+  mlFilter = HM.filter
+  mlMapMaybe = HM.mapMaybe
+  mlDifferenceWith = HM.differenceWith
 
-instance Functor (ArrayDiff k) where
-  fmap f = ArrayDiff . fmap (\(k,v) -> (k,f v)) . unArrayDiff
+instance MapLike IM.IntMap where
+  mlEmpty = IM.empty
+  mlUnion = IM.union
+  mlDifference = IM.difference
+  mlFilter = IM.filter
+  mlMapMaybe = IM.mapMaybe
+  mlDifferenceWith = IM.differenceWith
 
-instance KeyedCollection (ArrayDiff k) where
-  type Key (ArrayDiff k) = k
-  mapWithKey h = ArrayDiff . fmap (\(k,v) -> (k, h k v)) . unArrayDiff 
-  toKeyValueList = unArrayDiff
-  fromKeyValueList = ArrayDiff
+{-
+instance MapLike f => MapLike (Compose f Maybe) where
+  mlEmpty = Compose $ mlEmpty
+  mlUnion a b = Compose $ mlUnion (getCompose a) (getCompose b)
+  mlDifference a  b = Compose $ (getCompose a) (getCompose b)
+  mlFilter f = let g = maybe False id . fmap f in Compose . mlFilter g . getCompose -- this filters out Nothing and predicate = False
+  mlMapMaybe = Compose . fmap Just . mlMapMaybe . fmap join . getCompose 
+-}
 
-instance Ix k => Diffable (Array k) where
-  type Diff (Array k) = ArrayDiff k
-  mapDiffWithKey _ h = ArrayDiff . fmap (\(k,v) -> (k, h k v)) . unArrayDiff
-  diffNoEq _ new = ArrayDiff $ A.assocs new
-  diff old new =
-    let oldList = A.assocs old
-        newList = A.assocs new
-    in ArrayDiff $ foldl' (\diffs ((_,o),(kn,n)) -> if (o /= n) then (kn,n) : diffs else diffs) [] (zip oldList newList)
-  applyDiff (ArrayDiff diffs) a = a A.// diffs
-  diffOnlyKeyChanges _ _ = ArrayDiff []
-  editDiffLeavingDeletes _ _ _ = ArrayDiff [] -- we could implement this partially but I don't think we need it.
 
-type MapDiff f = Compose f Maybe
+-- f is the container
+-- Diff f has the operations to make and combine subsets
+-- we patch f using Diff 
+
+
+
+-- Given that the diff is MapLike, we can write default versions for everything except mapDiffWithkey
+class ( KeyedCollection f
+      , KeyedCollection (Diff f)
+--      , Key f ~ Key (Diff f)
+      , MapLike (Diff f)
+      , Align (Diff f)) => Diffable (f :: Type -> Type) where
+  type Diff f :: Type -> Type -- keyed collection of ElemUpdates
+  fromDiffKey :: Proxy f -> Key (Diff f) -> Key f
+  toDiff :: f a -> Diff f a -- a diff such that patch _ (toDiff x) = x
+  patch :: f a -> Diff f a -> f a -- update f using a Diff, often ignores initial argument 
 
 instance Ord k => Diffable (Map k) where
-  type Diff (Map k) = MapDiff (Map k)
-  mapDiffWithKey _ = mapDiffMapWithKey 
-  diffNoEq = mapDiffNoEq
-  diff = mapDiff M.mapMaybe
-  applyDiff = mapApplyDiff M.union M.difference M.filter M.mapMaybe
-  diffOnlyKeyChanges = mapDiffOnlyKeyChanges M.mapMaybe
-  editDiffLeavingDeletes _ = mapEditDiffLeavingDeletes M.differenceWith
+  type Diff (Map k) = Map k
+  fromDiffKey _ = id
+  toDiff = id
+  patch _ = id
 
 instance (Eq k, Hashable k) => Diffable (HashMap k) where
-  type Diff (HashMap k) = MapDiff (HashMap k)
-  mapDiffWithKey _ = mapDiffMapWithKey 
-  diffNoEq = mapDiffNoEq
-  diff = mapDiff HM.mapMaybe
-  applyDiff = mapApplyDiff HM.union HM.difference HM.filter HM.mapMaybe
-  diffOnlyKeyChanges = mapDiffOnlyKeyChanges HM.mapMaybe
-  editDiffLeavingDeletes _ = mapEditDiffLeavingDeletes HM.differenceWith
+  type Diff (HashMap k) = HashMap k
+  fromDiffKey _ = id
+  toDiff = id
+  patch _ = id
 
 instance Diffable IntMap where
-  type Diff IntMap = MapDiff IntMap
-  mapDiffWithKey _ = mapDiffMapWithKey 
-  diffNoEq = mapDiffNoEq
-  diff = mapDiff IM.mapMaybe
-  applyDiff = mapApplyDiff IM.union IM.difference IM.filter IM.mapMaybe
-  diffOnlyKeyChanges = mapDiffOnlyKeyChanges IM.mapMaybe
-  editDiffLeavingDeletes _ = mapEditDiffLeavingDeletes IM.differenceWith
+  type Diff IntMap = IntMap
+  fromDiffKey _ = id
+  toDiff = id
+  patch _ = id
 
--- we do [] and Seq by zipping and transforming to IntMap (for diffing) and then back (when applying).  Is there a better way?
--- especially for diffOnlyKeyChanges, the workhorse?
 instance Diffable ([]) where
-  type Diff ([]) = MapDiff IntMap
-  mapDiffWithKey _ = mapDiffMapWithKey
-  diffNoEq old new = mapDiffNoEq (listToIntMap old) (listToIntMap new) 
-  diff old new = mapDiff IM.mapMaybe (listToIntMap old) (listToIntMap new) 
-  applyDiff diff old = fmap snd . IM.toList $ mapApplyDiff IM.union IM.difference IM.filter IM.mapMaybe diff (listToIntMap old)
-  diffOnlyKeyChanges old new = mapDiffOnlyKeyChanges IM.mapMaybe (IM.fromAscList . zip [0..] $ old) (listToIntMap new)
-  editDiffLeavingDeletes _ = mapEditDiffLeavingDeletes IM.differenceWith
-
-listToIntMap :: [v] -> IntMap v
-listToIntMap = IM.fromAscList . zip [0..]
+  type Diff ([]) = IntMap
+  fromDiffKey _ = id
+  toDiff = IM.fromAscList . zip [0..]
+  patch _ = fmap snd . IM.toAscList
 
 instance Diffable (S.Seq) where
-  type Diff (S.Seq) = MapDiff IntMap
-  mapDiffWithKey _ = mapDiffMapWithKey
-  diffNoEq old new = mapDiffNoEq (seqToIntMap old) (seqToIntMap new) 
-  diff old new = mapDiff IM.mapMaybe (seqToIntMap old) (seqToIntMap new) 
-  applyDiff diff old = S.fromList . fmap snd . IM.toList $ mapApplyDiff IM.union IM.difference IM.filter IM.mapMaybe diff (seqToIntMap old)
-  diffOnlyKeyChanges old new = mapDiffOnlyKeyChanges IM.mapMaybe (seqToIntMap old) (seqToIntMap new)
-  editDiffLeavingDeletes _ = mapEditDiffLeavingDeletes IM.differenceWith
-
-
-seqToIntMap :: S.Seq v -> IntMap v
-seqToIntMap = IM.fromAscList . zip [0..] . F.toList
-
-mapDiffMapWithKey :: KeyedCollection f => (Key f -> a -> b) -> MapDiff f a -> MapDiff f b
-mapDiffMapWithKey = composeMaybeMapWithKey
+  type Diff (S.Seq) = IntMap
+  fromDiffKey _ = id
+  toDiff = IM.fromAscList . zip [0..] . F.toList
+  patch _ = S.fromList . fmap snd . IM.toAscList
   
-mapDiffNoEq :: (Functor f, Align f) => f v -> f v -> MapDiff f v
-mapDiffNoEq old new =  Compose $ flip fmap (align old new) $ \case
-  This _ -> Nothing -- in old but not new, so delete
-  That v -> Just v -- in new but not old, so put in patch
-  These _ v -> Just v -- in both and, without Eq, we don't know if the value changed, so put possibly new value in patch
+instance (Enum k, Ix k) => Diffable (Array k) where
+  type Diff (Array k) = IntMap
+  fromDiffKey _ = toEnum
+  toDiff = IM.fromAscList . fmap (\(k,v) -> (fromEnum k, v)) . A.assocs
+  patch old x = old A.// (fmap (\(n,v) -> (toEnum n,v)) $ IM.toAscList x) -- Array must keep old ones if no update.  It's "Total"
+  
+-- a patch is ready to be made back into the original type but how depends on the type
+createPatch :: Diffable f => Diff f (Maybe v) -> f v -> Diff f v
+createPatch diff old =
+  let deletions = mlFilter isNothing diff
+      insertions = mlMapMaybe id  $ diff `mlDifference` deletions
+  in insertions `mlUnion` ((toDiff old) `mlDifference` deletions)
 
-mapDiff :: (Eq v, Functor f, Align f) =>  (forall a b.((a -> Maybe b) -> f a  -> f b)) -> f v -> f v -> MapDiff f v
-mapDiff mapMaybe old new = Compose $ flip mapMaybe (align old new) $ \case
-  This _ -> Just Nothing -- in old but not new, so delete
-  That v -> Just $ Just v -- in new but not old, so put in patch
-  These oldV newV -> if oldV == newV then Nothing else Just $ Just newV -- in both and without Eq I don't know if the value changed, so put possibly new value in patch
+diffNoEq :: Diffable f => f v -> f v -> Diff f (Maybe v)
+diffNoEq old new =  flip fmap (align (toDiff old) (toDiff new)) $ \case
+  This _ -> Nothing -- delete
+  That x -> Just x -- add
+  These _ x -> Just x -- might be a change so add
 
-mapApplyDiff ::
-  (forall a. (f a -> f a -> f a)) -- union
-  -> (forall a b. (f a -> f b -> f a)) -- difference
-  -> (forall a. ((a -> Bool) -> f a -> f a)) -- filter
-  -> (forall a b. ((a -> Maybe b) -> f a -> f b)) -- mapMaybe
-  -> MapDiff f v
-  -> f v
-  -> f v
-mapApplyDiff mapUnion mapDifference mapFilter mapMaybe patch old =  
-    let deletions = mapFilter isNothing (getCompose patch)
-        insertions = mapMaybe id  $ (getCompose patch) `mapDifference` deletions
-    in insertions `mapUnion` (old `mapDifference` deletions)
+diff :: (Diffable f, Eq v) => f v -> f v -> Diff f (Maybe v)
+diff old new = flip mlMapMaybe (align (toDiff old) (toDiff new)) $ \case
+  This _ -> Just Nothing -- delete
+  That x -> Just $ Just x -- add
+  These x y -> if x == y then Nothing else (Just $ Just y)
 
-mapDiffOnlyKeyChanges :: (Align f, Functor f) => (forall a b.((a -> Maybe b) -> f a -> f b)) -> f v -> f v -> MapDiff f v
-mapDiffOnlyKeyChanges mapMaybe old new = Compose $ flip mapMaybe (align old new) $ \case
+diffOnlyKeyChanges :: Diffable f => f v -> f v -> Diff f (Maybe v)
+diffOnlyKeyChanges old new = flip mlMapMaybe (align (toDiff old) (toDiff new)) $ \case
   This _ -> Just Nothing
   These _ _ -> Nothing
   That n -> Just $ Just n
-
-mapEditDiffLeavingDeletes :: (forall a b.(a -> b -> Maybe a) -> f a -> f b -> f a) -> MapDiff f v -> MapDiff f u -> MapDiff f v
-mapEditDiffLeavingDeletes mapDifferenceWith da db =
+  
+editDiffLeavingDeletes :: Diffable f => Proxy f -> Diff f (Maybe v) -> Diff f (Maybe v) -> Diff f (Maybe v)
+editDiffLeavingDeletes _ da db =
   let relevantPatch patch _ = case patch of
         Nothing -> Just Nothing -- it's a delete
         Just _  -> Nothing -- remove from diff
-  in Compose $ mapDifferenceWith relevantPatch (getCompose da) (getCompose db)
-
+  in mlDifferenceWith relevantPatch da db

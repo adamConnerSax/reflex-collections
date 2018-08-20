@@ -30,7 +30,12 @@ module Reflex.Collections.Collections
   ) where
 
 
-import           Reflex.Collections.Diffable        (Diffable (..), toDiff)
+import           Reflex.Collections.Diffable        (Diffable (..)
+                                                    , createPatch
+                                                    , diff
+                                                    , diffNoEq
+                                                    , diffOnlyKeyChanges
+                                                    , editDiffLeavingDeletes)
 import           Reflex.Collections.KeyedCollection (KeyedCollection (..))
 import           Reflex.Collections.Sequenceable    (PatchSequenceable (..),
                                                      ReflexMergeable (..))
@@ -62,7 +67,7 @@ type PatchSeqC f a = (SeqTypes f a, PatchSequenceable (SeqType f a) (SeqPatchTyp
 listHoldWithKeyGeneral :: forall t m f v a. ( R.Adjustable t m
                                             , R.MonadHold t m
                                             , PatchSeqC f a)
-  => f v -> R.Event t (Diff f v) -> (Key f -> v -> m a) -> m (R.Dynamic t (f a))
+  => f v -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> m a) -> m (R.Dynamic t (f a))
 listHoldWithKeyGeneral c0 c' h = do
   let pf = Proxy :: Proxy f
       makePatchSeq' = makePatchSeq pf
@@ -81,16 +86,16 @@ listWithKeyGeneral' :: forall t m f v a. ( R.Adjustable t m
                                          , R.PostBuild t m
                                          , R.MonadHold t m
                                          , PatchSeqC f a
-                                         , GCompare (FanSelectKey f v))
-                    => (R.Dynamic t (f v) -> m (f v, R.Event t (Diff f v)))
+                                         , GCompare (FanKey f v))
+                    => (R.Dynamic t (f v) -> m (f v, R.Event t (Diff f (Maybe v))))
                     -> R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
 listWithKeyGeneral' toInitialPlusKeyDiffEvent vals mkChild = do
   let doFan' = doFan
-      makeSelKey' = makeSelectKey (Proxy :: Proxy f) (Proxy :: Proxy v)
+      makeFanKey' = makeFanKey (Proxy :: Proxy f) (Proxy :: Proxy v)
       childValChangedSelector = doFan' $ R.updated vals
   (fv0, edfv) <- toInitialPlusKeyDiffEvent vals
   listHoldWithKeyGeneral fv0 edfv $ \k v ->
-    mkChild k =<< R.holdDyn v (R.select childValChangedSelector $ makeSelKey' k)
+    mkChild k =<< R.holdDyn v (R.select childValChangedSelector $ makeFanKey' k)
 
 -- | Create a dynamically-changing set of Event-valued widgets.
 listWithKeyGeneral :: ( R.Adjustable t m
@@ -100,7 +105,7 @@ listWithKeyGeneral :: ( R.Adjustable t m
                       , PatchSeqC f a  -- for the listHold
                       , Monoid (f v)
                       , Functor (Diff f)
-                      , GCompare (FanSelectKey f v))
+                      , GCompare (FanKey f v))
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
 listWithKeyGeneral = listWithKeyGeneral' hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent
 
@@ -112,7 +117,7 @@ listGeneral :: ( R.Adjustable t m
                , PatchSeqC f a  -- for the listHold
                , Monoid (f v)
                , Functor (Diff f)
-               , GCompare (FanSelectKey f v))
+               , GCompare (FanKey f v))
   => R.Dynamic t (f v) -> (R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
 listGeneral df mkChild = listWithKeyGeneral df (\_ dv -> mkChild dv)
 
@@ -125,8 +130,8 @@ listViewWithKeyGeneral' ::  ( R.Adjustable t m
                             , PatchSeqC f a
                             , PatchSeqC f (R.Event t a)
                             , ReflexMergeable (SeqType f a)
-                            , GCompare (FanSelectKey f v))
-  => (R.Dynamic t (f v) -> m (f v, R.Event t (Diff f v)))
+                            , GCompare (FanKey f v))
+  => (R.Dynamic t (f v) -> m (f v, R.Event t (Diff f (Maybe v))))
   -> R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (f a))
 listViewWithKeyGeneral' toEv vals mkChild =
   R.switch . R.current . fmap mergeOver <$> listWithKeyGeneral' toEv vals mkChild
@@ -140,7 +145,7 @@ listViewWithKeyGeneral ::  ( R.Adjustable t m
                            , PatchSeqC f (R.Event t a)
                            , ReflexMergeable (SeqType f a)
                            , Monoid (f v)
-                           , GCompare (FanSelectKey f v))
+                           , GCompare (FanKey f v))
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (f a))
 listViewWithKeyGeneral = listViewWithKeyGeneral' hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent
 
@@ -153,16 +158,17 @@ listWithKeyShallowDiffGeneral :: forall t m f v a.( R.Adjustable t m
                                                   , PatchSeqC f a -- for the listHold
                                                   , Monoid (f ())
                                                   , Functor (Diff f)
-                                                  , GCompare (FanSelectKey f v))
-  => f v -> R.Event t (Diff f v) -> (Key f -> v -> R.Event t v -> m a) -> m (R.Dynamic t (f a))
+                                                  , GCompare (FanKey f v))
+  => f v -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> R.Event t v -> m a) -> m (R.Dynamic t (f a))
 listWithKeyShallowDiffGeneral initialVals valsChanged mkChild = do
-  let makeSelKey' = makeSelectKey (Proxy :: Proxy f) (Proxy :: Proxy v)
+  let makeFanKey' = makeFanKey (Proxy :: Proxy f) (Proxy :: Proxy v)
       fanDiff' = doDiffFan (Proxy :: Proxy f)
       editDiffLeavingDeletes' = editDiffLeavingDeletes (Proxy :: Proxy f)
       childValChangedSelector = fanDiff' valsChanged
+      applyDiff = 
   sentVals <- R.foldDyn applyDiff (mempty :: f ()) $ fmap void valsChanged
   listHoldWithKeyGeneral initialVals (R.attachWith (flip editDiffLeavingDeletes') (R.current (toDiff <$> sentVals)) valsChanged) $ \k v ->
-    mkChild k v $ R.select childValChangedSelector $ makeSelKey' k
+    mkChild k v $ R.select childValChangedSelector $ makeFanKey' k
 
 -- | Create a dynamically-changing set of widgets, one of which is selected at any time.
 selectViewListWithKeyGeneral :: ( R.Adjustable t m
@@ -174,7 +180,7 @@ selectViewListWithKeyGeneral :: ( R.Adjustable t m
                                 , PatchSeqC f (R.Event t (Key f, a)) -- for the listHold
                                 , Monoid (f v)
                                 , Functor (Diff f)
-                                , GCompare (FanSelectKey f v)
+                                , GCompare (FanKey f v)
                                 , Ord (Key f))
   => R.Dynamic t (Key f)          -- ^ Current selection key
   -> R.Dynamic t (f v)      -- ^ Dynamic container of values
@@ -195,7 +201,7 @@ hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent :: forall t m f v. ( Diffable f
                                                                     , R.PostBuild t m
                                                                     , MonadFix m
                                                                     , R.MonadHold t m)
-  => R.Dynamic t (f v) -> m (f v, R.Event t (Diff f v))
+  => R.Dynamic t (f v) -> m (f v, R.Event t (Diff f (Maybe v)))
 hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent vals = mdo
   postBuild <- R.getPostBuild
   let emptyContainer' = mempty
@@ -212,7 +218,7 @@ sampledDiffableDynamicToInitialPlusKeyDiffEvent :: forall t m f v. ( R.Reflex t
                                                                    , Diffable f
                                                                    , MonadFix m
                                                                    , R.MonadHold t m)
-  => R.Dynamic t (f v) -> m (f v, R.Event t (Diff f v))
+  => R.Dynamic t (f v) -> m (f v, R.Event t (Diff f (Maybe v)))
 sampledDiffableDynamicToInitialPlusKeyDiffEvent vals = do
   v0 <- R.sample . R.current $ vals
   rec sentVals :: R.Dynamic t (f v) <- R.foldDyn applyDiff v0 changeVals
@@ -229,7 +235,7 @@ sampledListWithKey :: ( R.Adjustable t m
                       , R.MonadHold t m
                       , PatchSeqC f a -- for the listHold
                       , Functor (Diff f)
-                      , GCompare (FanSelectKey f v))
+                      , GCompare (FanKey f v))
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
 sampledListWithKey vals mkChild = listWithKeyGeneral' sampledDiffableDynamicToInitialPlusKeyDiffEvent vals mkChild
 
