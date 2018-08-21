@@ -48,7 +48,8 @@ prop_Diffable_PatchLaw c d = equalKC c $ patch d (toDiff c)
 -- an array that must have values for all keys
 newtype TotalArray k a = TotalArray { unTA :: Array k a } deriving (Functor, KeyedCollection, Diffable, Show)
 
-
+-- the Arbitrary instance for Array uses a random contiguous subset of indices.  We need them all.
+-- We generate an arbitrary list of values of the right length and then fmap to get a TotalArray
 instance (Arbitrary k, Bounded k, Enum k, Ix k, Arbitrary a) => Arbitrary (TotalArray k a) where
   arbitrary = fmap (TotalArray . listArray (minBound, maxBound)) $ replicateM (length [(minBound :: k) .. (maxBound :: k)]) arbitrary
 
