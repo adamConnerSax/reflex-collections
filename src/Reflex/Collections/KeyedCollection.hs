@@ -41,17 +41,6 @@ class Functor f => KeyedCollection (f :: Type -> Type) where
   toKeyValueList :: f v -> [(Key f, v)]
   fromKeyValueList :: [(Key f ,v)] -> f v -- assumes Keys are distinct    
 
-instance (KeyedCollection f, Filterable f) => KeyedCollection (Compose f Maybe) where
-  type Key (Compose f Maybe) = Key f
-  mapWithKey =  composeMapWithKey
-  toKeyValueList = toKeyValueList . mapMaybe id . getCompose
-  fromKeyValueList = Compose . fmap Just . fromKeyValueList
-
-composeMapWithKey :: (Functor g, KeyedCollection f) => (Key f -> a -> b) -> Compose f g a -> Compose f g b
-composeMapWithKey h =
-  let q k = fmap (h k)
-  in Compose . mapWithKey q . getCompose
-
 instance Ord k => KeyedCollection (M.Map k) where
   type Key (M.Map k) = k
   mapWithKey = M.mapWithKey

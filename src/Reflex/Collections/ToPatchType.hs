@@ -19,13 +19,9 @@ module Reflex.Collections.ToPatchType
   (
     ToPatchType(..)
   , SeqTypes(..)
---  , toSeqType
   , functorMappedToSeqType
   , distributeOverDynPure
   , mergeOver
---  , keyedCollectionWithFunctorToDMap
---  , keyedCollectionToDMap
---  , dmapToKeyedCollection
   ) where
 
 import           Reflex.Collections.KeyedCollection (KeyedCollection(..))

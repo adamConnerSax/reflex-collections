@@ -118,7 +118,19 @@ executable test-simple
 
 
   
-  
+
+Test-Suite hspec
+  type: exitcode-stdio-1.0
+  main-is: test/Main.hs
+  build-depends: base
+               , array
+               , reflex-collections
+               , containers
+               , QuickCheck
+               , quickcheck-instances
+               , hspec
+                    
+    
 source-repository head
   type:     git
   location: https://github.com/adamConnerSax/reflex-collections
