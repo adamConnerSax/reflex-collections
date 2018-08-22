@@ -31,7 +31,7 @@ import           System.Process                   (spawnProcess)
 import           Text.Read                        (Read, readMaybe)
 
 
-import           Reflex.Collections.Collections
+import qualified Reflex.Collections.Collections   as RC
 
 -- NB: This is just for warp.
 main::IO ()
@@ -67,24 +67,24 @@ testWidget = mainWidget $ do
   bigBreak
 
   el "h3" $ text "Now we feed it instead to listViewWithKey to show that the widgets are not rebuilt. But notice that *all* even when any 1 input changes. Can we fix that too?"
-  mapEv2 <- listViewWithKeyGeneral mapDyn0 (pairWidget id)
+  mapEv2 <- RC.listViewWithKey mapDyn0 (pairWidget id)
   mapDyn2 <- foldDyn M.union xMap mapEv2
   dynText $ fmap (T.pack . show) mapDyn2
 
   bigBreak
   el "h3" $ text "Now an IntMap example using IntMap underneath instead of DMap"
-  intMapEv0 <- listViewWithKeyGeneral (constDyn xIntMap) (pairWidget (T.pack . show))
+  intMapEv0 <- RC.listViewWithKey (constDyn xIntMap) (pairWidget (T.pack . show))
   intMapDyn0 <- foldDyn IM.union xIntMap intMapEv0
   dynText $ fmap (T.pack . show) intMapDyn0
 
   smallBreak
-  intMapEv1 <- listViewWithKeyGeneral intMapDyn0 (pairWidget (T.pack . show))
+  intMapEv1 <- RC.listViewWithKey intMapDyn0 (pairWidget (T.pack . show))
   intMapDyn1 <- foldDyn IM.union xIntMap intMapEv1
   dynText $ fmap (T.pack . show) intMapDyn1
 
   bigBreak
   el "h3" $ text "Now a List example (using IntMap underneath)"
-  listMDyn0 <- fmap sequence . join . fmap sequence <$> listWithKeyGeneral (constDyn xList) (pairWidgetDyn (T.pack . show))
+  listMDyn0 <- fmap sequence . join . fmap sequence <$> RC.listWithKey (constDyn xList) (pairWidgetDyn (T.pack . show))
   listDyn0 <- holdDyn xList (fmapMaybe id . updated $ listMDyn0) -- hold not fold.  The dynamic list output is the new list. ??
   dynText $ fmap (T.pack . show) listDyn0
 
