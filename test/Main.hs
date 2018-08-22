@@ -10,7 +10,8 @@ import           Data.IntMap                        (IntMap)
 import           Data.Map                           (Map)
 import           Data.Sequence                      (Seq)
 import           Reflex.Collections.Diffable        (Diffable (..),
-                                                     MapLike (..))
+                                                     MapLike (..), createPatch,
+                                                     diff, diffNoEq)
 import           Reflex.Collections.KeyedCollection (KeyedCollection (..))
 import           Test.Hspec
 import           Test.QuickCheck
@@ -45,6 +46,13 @@ prop_MapLike_UnionAfterDifference a b = equalKC (mlUnion a b) (mlUnion a (mlDiff
 prop_Diffable_PatchLaw :: (Diffable f, Eq a, Eq (Key f)) => f a -> f a -> Bool
 prop_Diffable_PatchLaw c d = equalKC c $ patch d (toDiff c)
 
+prop_Diffable_DiffLawNoEq :: (Diffable f, Eq a, Eq (Key f)) => f a -> f a -> Bool
+prop_Diffable_DiffLawNoEq a b = equalKC b (patch a (createPatch (diffNoEq a b) a))
+
+prop_Diffable_DiffLaw :: (Diffable f, Eq a, Eq (Key f)) => f a -> f a -> Bool
+prop_Diffable_DiffLaw a b = equalKC b (patch a (createPatch (diff a b) a))
+
+
 -- an array that must have values for all keys
 newtype TotalArray k a = TotalArray { unTA :: Array k a } deriving (Functor, KeyedCollection, Diffable, Show)
 
@@ -74,3 +82,11 @@ main = hspec $ do
   describe "Diffable: patch law" $
     do it "prop_Diffable_PatchLaw (Map Int Int)" $ property (prop_Diffable_PatchLaw :: Map Int Int -> Map Int Int -> Bool)
        it "prop_Diffable_PatchLaw (TotalArray ArrayKeys Int)" $ property (prop_Diffable_PatchLaw :: TotalArray ArrayKeys Int -> TotalArray ArrayKeys Int -> Bool)
+       it "prop_Diffable_PatchLaw ([Int])" $ property (prop_Diffable_PatchLaw :: [Int] -> [Int] -> Bool)
+  describe "Diffable: diff laws" $
+    do it "prop_Diffable_DiffLawNoEq (Map Int Int)" $ property (prop_Diffable_DiffLawNoEq :: Map Int Int -> Map Int Int -> Bool)
+       it "prop_Diffable_DiffLawNoEq (IntMap String)" $ property (prop_Diffable_DiffLawNoEq :: IntMap String -> IntMap String -> Bool)
+       it "prop_Diffable_DiffLawNoEq (TotalArray ArrayKeys Int)" $ property (prop_Diffable_DiffLawNoEq :: TotalArray ArrayKeys Int -> TotalArray ArrayKeys Int -> Bool)
+       it "prop_Diffable_DiffLaw (Map Int Int)" $ property (prop_Diffable_DiffLaw :: Map Int Int -> Map Int Int -> Bool)
+       it "prop_Diffable_DiffLaw (IntMap String)" $ property (prop_Diffable_DiffLaw :: IntMap String -> IntMap String -> Bool)
+       it "prop_Diffable_DiffLaw (TotalArray ArrayKeys Int)" $ property (prop_Diffable_DiffLaw :: TotalArray ArrayKeys Int -> TotalArray ArrayKeys Int -> Bool)

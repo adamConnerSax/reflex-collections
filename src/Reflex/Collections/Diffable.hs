@@ -83,7 +83,10 @@ instance MapLike IntMap where
 -- we make a new f using and old f and Diff, since sometimes Diff loses information required to reconstruct. E.g., Diff (Array k) = Map k
 -- and (Array k) needs a value for each key which Map may not have one.
 
--- this class has the one law: patch _ (toDiff x) = x
+-- this class has laws:
+-- patch _ (toDiff x) = x
+-- patch x (createPatch x $ diffNoEq x y) = y
+-- patch x (createPatch x $ diff x y) = y
 class ( KeyedCollection f
       , KeyedCollection (Diff f)
       , MapLike (Diff f)
