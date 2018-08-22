@@ -10,6 +10,12 @@
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
 #endif
+-- | This module implements the `ComposedIntMap` and `ComposedPatchIntMap` classes, in order to have a version
+-- of IntMap and PatchIntMap which have the same kind as Dmap.  More specificially
+-- `DMap k :: (Type -> Type) -> Type`, that is `DMap k` and `ComposedIntMap a` both take a type constructor
+-- (a thing of kind `Type -> Type`) and produce a type.
+-- This allows us to reuse the same machinery for both types so we can have DMap-backed collections and IntMap-backed
+-- collections handled in a similar way.
 module Reflex.Collections.ComposedIntMap
   (
     ComposedIntMap(..)

@@ -37,9 +37,11 @@ class ReflexMergeable (f :: (Type -> Type) -> Type) where
   mergeEvents :: R.Reflex t => f (R.Event t) -> R.Event t (f Identity)
 
 instance GCompare k => ReflexMergeable (DMap k) where
+  {-# INLINABLE mergeEvents #-}
   mergeEvents = R.merge
 
 instance ReflexMergeable (ComposedIntMap a) where
+  {-# INLINABLE mergeEvents #-}
   mergeEvents = fmap (ComposedIntMap . Compose . fmap Identity) . R.mergeInt . getCompose  . unCI
 
 
@@ -57,12 +59,14 @@ class ( R.Patch (pd Identity)
 
 -- | DMaps are our prime example of something sequenceable
 instance (GCompare (Const2 k a), Ord k) => PatchSequenceable (DMap (Const2 k a)) (PatchDMap (Const2 k a)) where
+  {-# INLINABLE sequenceWithPatch #-}
   sequenceWithPatch :: R.Adjustable t m
                     => DMap (Const2 k a) m
                     -> R.Event t (PatchDMap (Const2 k a) m)
                     -> m (DMap (Const2 k a) Identity, R.Event t (PatchDMap (Const2 k a) Identity))
   sequenceWithPatch = R.sequenceDMapWithAdjust
 
+  {-# INLINABLE patchPairToDynamic #-} 
   patchPairToDynamic :: (R.MonadHold t m, R.Reflex t)
                      => DMap (Const2 k a) Identity
                      -> R.Event t (PatchDMap (Const2 k a) Identity)
@@ -70,7 +74,8 @@ instance (GCompare (Const2 k a), Ord k) => PatchSequenceable (DMap (Const2 k a))
   patchPairToDynamic a0 a' = R.incrementalToDynamic <$> R.holdIncremental a0 a'
 
 
-instance PatchSequenceable (ComposedIntMap a) (ComposedPatchIntMap a) where  
+instance PatchSequenceable (ComposedIntMap a) (ComposedPatchIntMap a) where
+  {-# INLINABLE sequenceWithPatch #-}  
   sequenceWithPatch :: R.Adjustable t m
                     => ComposedIntMap a m
                     -> R.Event t (ComposedPatchIntMap a m)
@@ -79,6 +84,7 @@ instance PatchSequenceable (ComposedIntMap a) (ComposedPatchIntMap a) where
     let f (im, pim) = (ComposedIntMap . Compose $ im, fmap (ComposedPatchIntMap . Compose) pim)
     in f <$> R.traverseIntMapWithKeyWithAdjust (\_ -> fmap Identity) (getCompose ci) (fmap (getCompose . unCPI) cpEv) 
 
+  {-# INLINABLE patchPairToDynamic #-} 
   patchPairToDynamic :: (R.MonadHold t m, R.Reflex t)
                      => ComposedIntMap a Identity
                      -> R.Event t (ComposedPatchIntMap a Identity)
@@ -86,13 +92,15 @@ instance PatchSequenceable (ComposedIntMap a) (ComposedPatchIntMap a) where
   patchPairToDynamic a0 a' = R.incrementalToDynamic <$> R.holdIncremental a0 a'
 
 
-class ReflexSequenceable (f :: (Type -> Type) -> Type) where
+class ReflexSequenceable (f :: (Type -> Type) -> Type) where  
   sequenceDynamic :: R.Reflex t => f (R.Dynamic t) -> R.Dynamic t (f Identity)
 
 instance GCompare k => ReflexSequenceable (DMap k) where
+  {-# INLINABLE sequenceDynamic #-}
   sequenceDynamic = R.distributeDMapOverDynPure 
 
 instance ReflexSequenceable (ComposedIntMap a) where
+  {-# INLINABLE sequenceDynamic #-}
   sequenceDynamic cim =
     let im = (getCompose . unCI $ cim) 
     in case IM.toList im of 

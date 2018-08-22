@@ -67,6 +67,7 @@ distributeOverDynPure :: ( R.Reflex t
                          , ReflexSequenceable (SeqType f v))
   => f (R.Dynamic t v) -> R.Dynamic t (f v)
 distributeOverDynPure = fmap unsafeFromSeqType . sequenceDynamic . withFunctorToSeqType
+{-# INLINABLE distributeOverDynPure #-}
 
 -- | Generalizes "mergeMap" to anything with ToPatchType where the Patches are Sequenceable.
 mergeOver :: forall t f v. ( R.Reflex t
@@ -78,7 +79,7 @@ mergeOver :: forall t f v. ( R.Reflex t
 mergeOver fEv =
   let id2 = const id :: (k -> R.Event t v -> R.Event t v)
   in fmap (fromSeqType (Proxy :: Proxy f)) . mergeEvents $ functorMappedToSeqType id2 fEv
-
+{-# INLINABLE mergeOver #-}
 -- NB: Performing mergeOver on an array will lead to errors since the result won't have an event for each value of the key.
 -- Should it be mergeOver :: f (Event t a) -> Event t (Diff f a) ?
 -- With maybe a "simpleMerge" version that returns the same type?
@@ -114,13 +115,20 @@ instance SeqTypes (Map k) v where
 
 instance Ord k => ToPatchType (Map k) where
   type FanKey (Map k) = Const2 k
+  {-# INLINABLE withFunctorToSeqType #-}
   withFunctorToSeqType = mapWithFunctorToDMap
+  {-# INLINABLE makePatchSeq #-}
   makePatchSeq _ h =
-    PatchDMap . keyedCollectionWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv))   
+    PatchDMap . keyedCollectionWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv))
+  {-# INLINABLE fromSeqType #-} 
   fromSeqType _ = dmapToMap
+  {-# INLINABLE unsafeFromSeqType #-}
   unsafeFromSeqType = patch M.empty . fromSeqType (Proxy :: Proxy (Map k))
+  {-# INLINABLE makeFanKey #-}
   makeFanKey _ _ = Const2
+  {-# INLINABLE doFan #-}
   doFan =  R.fan . fmap mapToDMap
+  {-# INLINABLE diffToFanType #-}
   diffToFanType _ = keyedCollectionToDMap . mlMapMaybe id
 
 instance SeqTypes (HashMap k) v where
@@ -129,13 +137,20 @@ instance SeqTypes (HashMap k) v where
 
 instance (Ord k, Eq k, Hashable k) => ToPatchType (HashMap k) where
   type FanKey (HashMap k) = Const2 k
+  {-# INLINABLE withFunctorToSeqType #-}  
   withFunctorToSeqType = keyedCollectionWithFunctorToDMap
+  {-# INLINABLE makePatchSeq #-}  
   makePatchSeq _ h =
-    PatchDMap . keyedCollectionWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv)) 
+    PatchDMap . keyedCollectionWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv))
+  {-# INLINABLE fromSeqType #-}     
   fromSeqType _ = dmapToKeyedCollection
+  {-# INLINABLE unsafeFromSeqType #-}  
   unsafeFromSeqType = patch HM.empty . fromSeqType (Proxy :: Proxy (HashMap k))
+  {-# INLINABLE makeFanKey #-}  
   makeFanKey _ _ = Const2
+  {-# INLINABLE doFan #-}  
   doFan =  R.fan . fmap keyedCollectionToDMap
+  {-# INLINABLE diffToFanType #-}  
   diffToFanType _ = keyedCollectionToDMap . mlMapMaybe id
 
 -- IntMap, [], Seq, and Array use IntMap for their merging and sequencing
@@ -145,14 +160,21 @@ instance SeqTypes IntMap v where
   type SeqPatchType IntMap v = ComposedPatchIntMap v
 
 instance ToPatchType IntMap where
-  type FanKey IntMap = Const2 Int 
+  type FanKey IntMap = Const2 Int
+  {-# INLINABLE withFunctorToSeqType #-}    
   withFunctorToSeqType = ComposedIntMap . Compose
+  {-# INLINABLE fromSeqType #-}       
   fromSeqType _ = fmap runIdentity . getCompose . unCI
+  {-# INLINABLE unsafeFromSeqType #-}    
   unsafeFromSeqType = patch IM.empty . fromSeqType (Proxy :: Proxy IntMap)
+  {-# INLINABLE makePatchSeq #-}    
   makePatchSeq _ h =
-    ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv)) 
+    ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv))
+  {-# INLINABLE makeFanKey #-}      
   makeFanKey _ _ = Const2
+  {-# INLINABLE doFan #-}    
   doFan = R.fan . fmap intMapToDMap
+  {-# INLINABLE diffToFanType #-}    
   diffToFanType _ = intMapToDMap . mlMapMaybe id
 
 instance SeqTypes [] v where
@@ -160,14 +182,21 @@ instance SeqTypes [] v where
   type SeqPatchType [] v = ComposedPatchIntMap v
 
 instance ToPatchType [] where
-  type FanKey [] = Const2 Int 
+  type FanKey [] = Const2 Int
+  {-# INLINABLE withFunctorToSeqType #-}      
   withFunctorToSeqType = ComposedIntMap . Compose . IM.fromAscList . zip [0..]
+  {-# INLINABLE fromSeqType #-}         
   fromSeqType _ = fmap runIdentity . getCompose . unCI
+  {-# INLINABLE unsafeFromSeqType #-}      
   unsafeFromSeqType = patch [] . fromSeqType (Proxy :: Proxy ([]))
+  {-# INLINABLE makePatchSeq #-}      
   makePatchSeq _ h =
-    ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv)) 
-  makeFanKey _ _ = Const2 
+    ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv))
+  {-# INLINABLE makeFanKey #-}          
+  makeFanKey _ _ = Const2
+  {-# INLINABLE doFan #-}      
   doFan = R.fan . fmap (DM.fromAscList . fmap (\(n,v) -> Const2 n :=> Identity v) . zip [0..])
+  {-# INLINABLE diffToFanType #-}      
   diffToFanType _ = intMapToDMap . mlMapMaybe id
 
 instance SeqTypes (S.Seq) v where
@@ -175,14 +204,21 @@ instance SeqTypes (S.Seq) v where
   type SeqPatchType (S.Seq) v = ComposedPatchIntMap v
 
 instance ToPatchType (S.Seq) where
-  type FanKey (S.Seq) = Const2 Int 
+  type FanKey (S.Seq) = Const2 Int
+  {-# INLINABLE withFunctorToSeqType #-}        
   withFunctorToSeqType = ComposedIntMap . Compose . IM.fromAscList . zip [0..] . F.toList
+  {-# INLINABLE fromSeqType #-}           
   fromSeqType _ = fmap runIdentity . getCompose . unCI
+  {-# INLINABLE unsafeFromSeqType #-}        
   unsafeFromSeqType = patch S.empty . fromSeqType (Proxy :: Proxy (S.Seq))
+  {-# INLINABLE makePatchSeq #-}        
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv))
+  {-# INLINABLE makeFanKey #-}              
   makeFanKey _ _ = Const2
+  {-# INLINABLE doFan #-}        
   doFan = R.fan . fmap (DM.fromAscList . fmap (\(n,v) -> Const2 n :=> Identity v) . zip [0..] . F.toList)
+  {-# INLINABLE diffToFanType #-}        
   diffToFanType _ = intMapToDMap . mlMapMaybe id
 
 -- this only works for an array which has an element for every value of the key
@@ -196,13 +232,20 @@ instance SeqTypes (Array k) v where
 
 instance (Enum k, Bounded k, Ix k) => ToPatchType (Array k) where
   type FanKey (Array k) = Const2 k
-  withFunctorToSeqType = ComposedIntMap . Compose . IM.fromAscList . zip [0..] . fmap snd . A.assocs  
+  {-# INLINABLE withFunctorToSeqType #-}          
+  withFunctorToSeqType = ComposedIntMap . Compose . IM.fromAscList . zip [0..] . fmap snd . A.assocs
+  {-# INLINABLE fromSeqType #-}             
   fromSeqType _ = fmap runIdentity . getCompose . unCI
+  {-# INLINABLE unsafeFromSeqType #-}          
   unsafeFromSeqType = A.listArray (minBound,maxBound) . fmap snd . IM.toAscList . fromSeqType (Proxy :: Proxy (Array k))
+  {-# INLINABLE makePatchSeq #-}          
   makePatchSeq _ h =
-    ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> fmap (h $ toEnum n) mv) -- IM.fromAscList . zip [0..] . fmap (\(k,v) -> Just $ h k v) 
-  makeFanKey _ _  = Const2 
+    ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> fmap (h $ toEnum n) mv) -- IM.fromAscList . zip [0..] . fmap (\(k,v) -> Just $ h k v)
+  {-# INLINABLE makeFanKey #-}                  
+  makeFanKey _ _  = Const2
+  {-# INLINABLE doFan #-}          
   doFan = R.fan . fmap keyedCollectionToDMap
+  {-# INLINABLE diffToFanType #-}          
   diffToFanType _ = intMapToDMapWithKey toEnum . mlMapMaybe id
 
 
@@ -210,42 +253,54 @@ instance (Enum k, Bounded k, Ix k) => ToPatchType (Array k) where
   
 functorMappedToSeqType :: (SeqTypes f u, ToPatchType f) => Functor g => (Key f -> v -> g u) -> f v -> SeqType f u g
 functorMappedToSeqType h = withFunctorToSeqType . mapWithKey h 
+{-# INLINABLE functorMappedToSeqType #-}
 
 toSeqType :: (Functor f, SeqTypes f v, ToPatchType f) => f v -> SeqType f v Identity
 toSeqType = withFunctorToSeqType . fmap Identity
+{-# INLINABLE toSeqType #-}
 
 -- generic to and fromDMap for Keyed collections
 -- can be optimized for collections that have to/from ascending lists
 keyedCollectionWithFunctorToDMap :: (Functor g, KeyedCollection f, Ord (Key f)) => f (g v) -> DMap (Const2 (Key f) v) g
 keyedCollectionWithFunctorToDMap = DM.fromList . fmap (\(k, gv) -> Const2 k :=> gv) . toKeyValueList
+{-# INLINABLE keyedCollectionWithFunctorToDMap #-}
 
 keyedCollectionToDMap :: (KeyedCollection f, Ord (Key f)) => f v -> DMap (Const2 (Key f) v) Identity
 keyedCollectionToDMap = DM.fromList . fmap (\(k, v) -> Const2 k :=> Identity v) . toKeyValueList
+{-# INLINABLE keyedCollectionToDMap #-}
 
 keyedCollectionToDMapWithKey :: (KeyedCollection f, Ord k) => (Key f -> k) -> f v -> DMap (Const2 k v) Identity
 keyedCollectionToDMapWithKey g = DM.fromList . fmap (\(k,v) -> Const2 (g k) :=> Identity v) . toKeyValueList
+{-# INLINABLE keyedCollectionToDMapWithKey #-}
 
 dmapToKeyedCollection :: KeyedCollection f => DMap (Const2 (Key f) v) Identity -> f v
 dmapToKeyedCollection = fromKeyValueList . fmap (\(Const2 k :=> Identity v) -> (k, v)) . DM.toList 
+{-# INLINABLE dmapToKeyedCollection #-}
 
 intMapWithFunctorToDMap :: IntMap (g v) -> DMap (Const2 Int v) g
 intMapWithFunctorToDMap = DM.fromAscList . fmap (\(n, gv) -> (Const2 n) :=> gv) . IM.toAscList 
+{-# INLINABLE intMapWithFunctorToDMap #-}
 
 intMapToDMap :: IntMap v -> DMap (Const2 Int v) Identity
 intMapToDMap = DM.fromAscList . fmap (\(n, v) -> (Const2 n) :=> Identity v) . IM.toAscList 
+{-# INLINABLE intMapToDMap #-}
 
 -- NB: This assumes the f :: Int -> Key function is order preserving, that is
 -- compare (f n) (f m) = compare n m
 intMapToDMapWithKey :: Ord k => (Int -> k) -> IntMap v -> DMap (Const2 k v) Identity
 intMapToDMapWithKey f = DM.fromAscList . fmap (\(n, v) -> Const2 (f n) :=> Identity v) . IM.toAscList 
+{-# INLINABLE intMapToDMapWithKey #-}
 
 -- generic to and from ComposedIntMap for Keyed collections
 -- can be optimized for collections that have to/from ascending lists
 keyedCollectionWithFunctorToComposedIntMap :: (Functor g, KeyedCollection f) => (Key f -> Int) -> f (g v) -> ComposedIntMap v g
 keyedCollectionWithFunctorToComposedIntMap toInt = ComposedIntMap . Compose . IM.fromList . fmap (\(k, gv) -> ( toInt k,  gv)) . toKeyValueList
+{-# INLINABLE keyedCollectionWithFunctorToComposedIntMap #-}
 
 keyedCollectionToComposedIntMap :: KeyedCollection f => (Key f -> Int) -> f v -> ComposedIntMap v Identity
 keyedCollectionToComposedIntMap toInt = keyedCollectionWithFunctorToComposedIntMap toInt . fmap Identity
+{-# INLINABLE keyedCollectionToComposedIntMap #-}
 
 composedIntMapToKeyedCollection :: KeyedCollection f => (Int -> Key f) -> ComposedIntMap v Identity -> f v
 composedIntMapToKeyedCollection toKey = fromKeyValueList . fmap (\(n, v) -> (toKey n, v)) . IM.toList . fmap runIdentity . getCompose . unCI
+{-# INLINABLE composedIntMapToKeyedCollection #-}

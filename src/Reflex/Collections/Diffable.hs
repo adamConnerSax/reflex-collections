@@ -14,6 +14,10 @@
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
 #endif
+-- | This module has a typeclass to give a common interface to a small subset of map functions (`MapLike`) and
+-- then a class to bring together the typeclass requirements for a collection that can be diffed in the way
+-- required for the collection functions.  `Diffable` brings these contraints together and adds the the functionality
+-- to map a collection to a Diff and, when possible, back.
 module Reflex.Collections.Diffable
   (
     Diffable(..)
@@ -55,27 +59,45 @@ class Functor f => MapLike f where
   mlDifferenceWith :: (a -> b -> Maybe a) -> f a -> f b -> f a 
 
 instance Ord k => MapLike (M.Map k) where
+  {-# INLINABLE mlEmpty #-}
   mlEmpty = M.empty
+  {-# INLINABLE mlUnion #-}
   mlUnion = M.union
+  {-# INLINABLE mlDifference #-}
   mlDifference = M.difference
+  {-# INLINABLE mlFilter #-}
   mlFilter = M.filter
+  {-# INLINABLE mlMapMaybe #-}
   mlMapMaybe = M.mapMaybe
+  {-# INLINABLE mlDifferenceWith #-}
   mlDifferenceWith = M.differenceWith
 
 instance (Eq k, Hashable k) => MapLike (HM.HashMap k) where
+  {-# INLINABLE mlEmpty #-}
   mlEmpty = HM.empty
+  {-# INLINABLE mlUnion #-}
   mlUnion = HM.union
+  {-# INLINABLE mlDifference #-}    
   mlDifference = HM.difference
+  {-# INLINABLE mlFilter #-}  
   mlFilter = HM.filter
+  {-# INLINABLE mlMapMaybe #-}  
   mlMapMaybe = HM.mapMaybe
+  {-# INLINABLE mlDifferenceWith #-}  
   mlDifferenceWith = HM.differenceWith
 
 instance MapLike IntMap where
+  {-# INLINABLE mlEmpty #-}  
   mlEmpty = IM.empty
+  {-# INLINABLE mlUnion #-}  
   mlUnion = IM.union
+  {-# INLINABLE mlDifference #-}      
   mlDifference = IM.difference
+  {-# INLINABLE mlFilter #-}    
   mlFilter = IM.filter
+  {-# INLINABLE mlMapMaybe #-}    
   mlMapMaybe = IM.mapMaybe
+  {-# INLINABLE mlDifferenceWith #-}    
   mlDifferenceWith = IM.differenceWith
 
 -- (f a) is the container
@@ -97,32 +119,44 @@ class ( KeyedCollection f
 
 instance Ord k => Diffable (Map k) where
   type Diff (Map k) = Map k
+  {-# INLINABLE toDiff #-}
   toDiff = id
+  {-# INLINABLE patch #-}
   patch _ = id
 
 instance (Eq k, Hashable k) => Diffable (HashMap k) where
   type Diff (HashMap k) = HashMap k
+  {-# INLINABLE toDiff #-}  
   toDiff = id
+  {-# INLINABLE patch #-}  
   patch _ = id
 
 instance Diffable IntMap where
   type Diff IntMap = IntMap
+  {-# INLINABLE toDiff #-}    
   toDiff = id
+  {-# INLINABLE patch #-}    
   patch _ = id
 
 instance Diffable ([]) where
   type Diff ([]) = IntMap
+  {-# INLINABLE toDiff #-}      
   toDiff = IM.fromAscList . zip [0..]
+  {-# INLINABLE patch #-}      
   patch _ = fmap snd . IM.toAscList
 
 instance Diffable (S.Seq) where
   type Diff (S.Seq) = IntMap
+  {-# INLINABLE toDiff #-}        
   toDiff = IM.fromAscList . zip [0..] . F.toList
+  {-# INLINABLE patch #-}        
   patch _ = S.fromList . fmap snd . IM.toAscList
   
 instance (Enum k, Ix k) => Diffable (Array k) where
   type Diff (Array k) = IntMap
+  {-# INLINABLE toDiff #-}          
   toDiff = IM.fromAscList . fmap (\(k,v) -> (fromEnum k, v)) . A.assocs
+  {-# INLINABLE patch #-}        
   patch old x = old A.// (fmap (\(n,v) -> (toEnum n,v)) $ IM.toAscList x) -- Array must keep old ones if no update.  It's "Total"
   
 -- a patch is ready to be made back into the original type but how depends on the type, via "patch"
@@ -131,27 +165,32 @@ createPatch d old =
   let deletions = mlFilter isNothing d
       insertions = mlMapMaybe id  $ d `mlDifference` deletions
   in insertions `mlUnion` ((toDiff old) `mlDifference` deletions)
+{-# INLINABLE createPatch #-}
 
 applyDiff :: Diffable f => Diff f (Maybe v) -> f v -> f v
 applyDiff d f = patch f (createPatch d f)
+{-# INLINABLE applyDiff #-}
 
 diffNoEq :: Diffable f => f v -> f v -> Diff f (Maybe v)
 diffNoEq old new =  flip fmap (align (toDiff old) (toDiff new)) $ \case
   This _ -> Nothing -- delete
   That x -> Just x -- add
   These _ x -> Just x -- might be a change so add
+{-# INLINABLE diffNoEq #-}
 
 diff :: (Diffable f, Eq v) => f v -> f v -> Diff f (Maybe v)
 diff old new = flip mlMapMaybe (align (toDiff old) (toDiff new)) $ \case
   This _ -> Just Nothing -- delete
   That x -> Just $ Just x -- add
   These x y -> if x == y then Nothing else (Just $ Just y)
+{-# INLINABLE diff #-}
 
 diffOnlyKeyChanges :: Diffable f => f v -> f v -> Diff f (Maybe v)
 diffOnlyKeyChanges old new = flip mlMapMaybe (align (toDiff old) (toDiff new)) $ \case
   This _ -> Just Nothing
   These _ _ -> Nothing
   That n -> Just $ Just n
+{-# INLINABLE diffOnlyKeyChanges #-}
   
 editDiffLeavingDeletes :: Diffable f => Proxy f -> Diff f (Maybe v) -> Diff f b -> Diff f (Maybe v)
 editDiffLeavingDeletes _ da db =
@@ -159,3 +198,4 @@ editDiffLeavingDeletes _ da db =
         Nothing -> Just Nothing -- it's a delete
         Just _  -> Nothing -- remove from diff
   in mlDifferenceWith relevantPatch da db
+{-# INLINABLE editDiffLeavingDeletes #-}

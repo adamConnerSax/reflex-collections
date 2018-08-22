@@ -45,55 +45,25 @@ type ReflexConstraints t m = (MonadWidget t m, DomBuilder t m, PostBuild t m, Mo
 staticMapHold :: (Ord k, ReflexConstraints t m) => M.Map k v -> (k -> Dynamic t v -> m (Event t v)) -> m (Event t (M.Map k v))
 staticMapHold x w = fmap (mergeMap . M.fromList) . sequence . fmap (\(k,v) -> (k,) <$> w k (constDyn v)) $ M.toList x
 
-naiveMapHold :: (Ord k, ReflexConstraints t m) => Dynamic t (M.Map k v) -> (k -> Dynamic t v -> m (Event t v)) -> m (Event t (M.Map k v))
-naiveMapHold xDyn w = join $ switchPromptly never <$> (dyn $ flip staticMapHold w <$> xDyn)
-
 testWidget :: JSM()
 testWidget = mainWidget $ do
   let xMap :: M.Map T.Text Int = M.fromList [("A",1),("B",2),("C",3)]
-      xIntMap :: IM.IntMap Double = IM.fromAscList [(1,1.0),(2,2.0),(3,3.0)]
-      xList :: [Int] = [1,2,3,4]
---      xSeq : S.Seq Int = S.fromList xList
-  el "h1" $ text "reflex-collections \"listView\" Function Family Examples"
+  el "h1" $ text "reflex-collections \"listView\" Code generation comparison."
   smallBreak
   el "h3" $ text "First, directly--mapping the widget over the map as a list, tagging the events with their keys, sequencing, making back into a map and then running mergeMap."
   mapEv0 <- staticMapHold xMap (pairWidget id) --fmap (mergeMap . M.fromList) . sequence . fmap (\(k,v) -> (k,) <$> pairWidget k (constDyn v)) $ M.toList x0
   mapDyn0 <- foldDyn M.union xMap mapEv0
   dynText $ fmap (T.pack . show) mapDyn0
-  el "h3" $ text "Now we feed the dynamic result into a dynamic version (fmapping the static version and then using dyn and switchPromptly) of the same thing to show how it rebuilds for all changes to the input."
-  mapEv1 <- naiveMapHold mapDyn0 (pairWidget id)
+
+  el "h3" $ text "Now we feed it to listViewWithKey (this library version)."
+  mapEv1 <- RC.listViewWithKey mapDyn0 (pairWidget id)
   mapDyn1 <- foldDyn M.union xMap mapEv1
   dynText $ fmap (T.pack . show) mapDyn1
-  bigBreak
-
-  el "h3" $ text "Now we feed it instead to listViewWithKey to show that the widgets are not rebuilt. But notice that *all* even when any 1 input changes. Can we fix that too?"
-  mapEv2 <- RC.listViewWithKey mapDyn0 (pairWidget id)
-  mapDyn2 <- foldDyn M.union xMap mapEv2
-  dynText $ fmap (T.pack . show) mapDyn2
 
   el "h3" $ text "We feed it again to listViewWithKey, this time the native reflex one to compare codegen."
-  mapEv3 <- listViewWithKey mapDyn0 (pairWidget id)
-  mapDyn3 <- foldDyn M.union xMap mapEv2
-  dynText $ fmap (T.pack . show) mapDyn3
-
-  bigBreak
-  el "h3" $ text "Now an IntMap example using IntMap underneath instead of DMap"
-  intMapEv0 <- RC.listViewWithKey (constDyn xIntMap) (pairWidget (T.pack . show))
-  intMapDyn0 <- foldDyn IM.union xIntMap intMapEv0
-  dynText $ fmap (T.pack . show) intMapDyn0
-
-  smallBreak
-  intMapEv1 <- RC.listViewWithKey intMapDyn0 (pairWidget (T.pack . show))
-  intMapDyn1 <- foldDyn IM.union xIntMap intMapEv1
-  dynText $ fmap (T.pack . show) intMapDyn1
-
-  bigBreak
-  el "h3" $ text "Now a List example (using IntMap underneath)"
-  listMDyn0 <- fmap sequence . join . fmap sequence <$> RC.listWithKey (constDyn xList) (pairWidgetDyn (T.pack . show))
-  listDyn0 <- holdDyn xList (fmapMaybe id . updated $ listMDyn0) -- hold not fold.  The dynamic list output is the new list. ??
-  dynText $ fmap (T.pack . show) listDyn0
-
-  -- NB: fmap sequence . join . fmap sequence :: Dynamic [Dynamic (Maybe a)] -> Dynamic (Maybe [a])
+  mapEv2 <- listViewWithKey mapDyn0 (pairWidget id)
+  mapDyn2 <- foldDyn M.union xMap mapEv2
+  dynText $ fmap (T.pack . show) mapDyn2
 
   return ()
 
@@ -134,9 +104,10 @@ pairWidget toText k iDyn = do
   el "span" $ text (toText k)
   el "span" $ fieldWidgetEv (readMaybe . T.unpack) iDyn
 
-
+{-
 pairWidgetDyn :: (Read a, Show a, ReflexConstraints t m) => (k -> T.Text) -> k -> Dynamic t a -> m (Dynamic t (Maybe a))
 pairWidgetDyn toText k iDyn = do
   pb <- getPostBuild
   upd <- fmap Just <$> pairWidget toText k iDyn
   holdDyn Nothing $ leftmost [upd, Just <$> tag (current iDyn) pb]
+-}
