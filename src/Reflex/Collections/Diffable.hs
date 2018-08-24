@@ -115,8 +115,28 @@ class ( KeyedCollection f
       , Align (Diff f)) => Diffable (f :: Type -> Type) where
   type Diff f :: Type -> Type -- keyed collection of ElemUpdates
   toDiff :: f a -> Diff f a -- a diff such that patch _ (toDiff x) = x
-  patch :: f a -> Diff f a -> f a -- update f using a Diff, often ignores initial argument 
-
+  patch :: f a -> Diff f a -> f a -- update f using a Diff, often ignores initial argument
+  createPatch :: Diff f (Maybe v) -> f v -> Diff f v
+  default createPatch :: MapLike (Diff f) => Diff f (Maybe v) -> f v -> Diff f v
+  createPatch = mapLikeCreatePatch
+  {-# INLINABLE createPatch #-}
+  diffNoEq :: f v -> f v -> Diff f (Maybe v)
+  default diffNoEq :: Align (Diff f) => f v -> f v -> Diff f (Maybe v)
+  diffNoEq = alignDiffNoEq
+  {-# INLINABLE diffNoEq #-}
+  diff :: Eq v => f v -> f v -> Diff f (Maybe v)
+  default diff :: (Eq v, Align (Diff f)) => f v -> f v -> Diff f (Maybe v)
+  diff = alignMapLikeDiff
+  {-# INLINABLE diff #-}
+  diffOnlyKeyChanges :: f v -> f v -> Diff f (Maybe v)
+  default diffOnlyKeyChanges :: (Align (Diff f), MapLike (Diff f)) => f v -> f v -> Diff f (Maybe v)
+  diffOnlyKeyChanges = alignMapLikeDiffOnlyKeyChanges
+  {-# INLINABLE diffOnlyKeyChanges #-}
+  editDiffLeavingDeletes :: Proxy f -> Diff f (Maybe v) -> Diff f b -> Diff f (Maybe v)
+  default editDiffLeavingDeletes :: MapLike (Diff f) => Proxy f -> Diff f (Maybe v) -> Diff f b -> Diff f (Maybe v)
+  editDiffLeavingDeletes = mapLikeEditDiffLeavingDeletes
+  {-# INLINABLE editDiffLeavingDeletes #-}
+  
 instance Ord k => Diffable (Map k) where
   type Diff (Map k) = Map k
   {-# INLINABLE toDiff #-}
@@ -158,44 +178,45 @@ instance (Enum k, Ix k) => Diffable (Array k) where
   toDiff = IM.fromAscList . fmap (\(k,v) -> (fromEnum k, v)) . A.assocs
   {-# INLINABLE patch #-}        
   patch old x = old A.// (fmap (\(n,v) -> (toEnum n,v)) $ IM.toAscList x) -- Array must keep old ones if no update.  It's "Total"
-  
--- a patch is ready to be made back into the original type but how depends on the type, via "patch"
-createPatch :: Diffable f => Diff f (Maybe v) -> f v -> Diff f v
-createPatch d old =
-  let deletions = mlFilter isNothing d
-      insertions = mlMapMaybe id  $ d `mlDifference` deletions
-  in insertions `mlUnion` ((toDiff old) `mlDifference` deletions)
-{-# INLINABLE createPatch #-}
 
 applyDiff :: Diffable f => Diff f (Maybe v) -> f v -> f v
 applyDiff d f = patch f (createPatch d f)
 {-# INLINABLE applyDiff #-}
 
-diffNoEq :: Diffable f => f v -> f v -> Diff f (Maybe v)
-diffNoEq old new =  flip fmap (align (toDiff old) (toDiff new)) $ \case
+-- default implementations for MapLike and Alignable containers  
+-- a patch is ready to be made back into the original type but how depends on the type, via "patch"
+mapLikeCreatePatch :: (Diffable f, MapLike (Diff f)) => Diff f (Maybe v) -> f v -> Diff f v
+mapLikeCreatePatch d old =
+  let deletions = mlFilter isNothing d
+      insertions = mlMapMaybe id  $ d `mlDifference` deletions
+  in insertions `mlUnion` ((toDiff old) `mlDifference` deletions)
+{-# INLINABLE mapLikeCreatePatch #-}
+
+alignDiffNoEq :: (Diffable f, Align (Diff f)) => f v -> f v -> Diff f (Maybe v)
+alignDiffNoEq old new =  flip fmap (align (toDiff old) (toDiff new)) $ \case
   This _ -> Nothing -- delete
   That x -> Just x -- add
   These _ x -> Just x -- might be a change so add
-{-# INLINABLE diffNoEq #-}
+{-# INLINABLE alignDiffNoEq #-}
 
-diff :: (Diffable f, Eq v) => f v -> f v -> Diff f (Maybe v)
-diff old new = flip mlMapMaybe (align (toDiff old) (toDiff new)) $ \case
+alignMapLikeDiff :: (Diffable f, Align (Diff f), MapLike (Diff f), Eq v) => f v -> f v -> Diff f (Maybe v)
+alignMapLikeDiff old new = flip mlMapMaybe (align (toDiff old) (toDiff new)) $ \case
   This _ -> Just Nothing -- delete
   That x -> Just $ Just x -- add
   These x y -> if x == y then Nothing else (Just $ Just y)
-{-# INLINABLE diff #-}
+{-# INLINABLE alignMapLikeDiff #-}
 
-diffOnlyKeyChanges :: Diffable f => f v -> f v -> Diff f (Maybe v)
-diffOnlyKeyChanges old new = flip mlMapMaybe (align (toDiff old) (toDiff new)) $ \case
+alignMapLikeDiffOnlyKeyChanges :: (Diffable f, Align (Diff f), MapLike (Diff f)) => f v -> f v -> Diff f (Maybe v)
+alignMapLikeDiffOnlyKeyChanges old new = flip mlMapMaybe (align (toDiff old) (toDiff new)) $ \case
   This _ -> Just Nothing
   These _ _ -> Nothing
   That n -> Just $ Just n
-{-# INLINABLE diffOnlyKeyChanges #-}
+{-# INLINABLE alignMapLikeDiffOnlyKeyChanges #-}
   
-editDiffLeavingDeletes :: Diffable f => Proxy f -> Diff f (Maybe v) -> Diff f b -> Diff f (Maybe v)
-editDiffLeavingDeletes _ da db =
+mapLikeEditDiffLeavingDeletes :: (Diffable f, MapLike (Diff f)) => Proxy f -> Diff f (Maybe v) -> Diff f b -> Diff f (Maybe v)
+mapLikeEditDiffLeavingDeletes _ da db =
   let relevantPatch p _ = case p of
         Nothing -> Just Nothing -- it's a delete
         Just _  -> Nothing -- remove from diff
   in mlDifferenceWith relevantPatch da db
-{-# INLINABLE editDiffLeavingDeletes #-}
+{-# INLINABLE mapLikeEditDiffLeavingDeletes #-}
