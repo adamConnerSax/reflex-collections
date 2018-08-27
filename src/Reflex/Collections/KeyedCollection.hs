@@ -15,7 +15,6 @@
 module Reflex.Collections.KeyedCollection
   (
     KeyedCollection (..)
---  , composeMaybeMapWithKey
   ) where
 
 import           Data.Kind             (Type)
@@ -24,23 +23,25 @@ import           Data.Maybe            (maybe)
 import           Data.These            (These(..))
 import           Data.Align            (Align(..))
                                        
---import           Data.Proxy            (Proxy (..))
-
 import qualified Data.Map              as M
 import           Data.Hashable         (Hashable)
 import qualified Data.HashMap.Strict   as HM
 import qualified Data.IntMap           as IM
 import qualified Data.Array            as A
 import qualified Data.Sequence         as S
+import qualified Data.Tree             as T
 import qualified Data.Foldable         as F
 import           Data.Witherable        (Filterable(..))
+
 
 class Functor f => KeyedCollection (f :: Type -> Type) where
   type Key f :: Type
   mapWithKey :: (Key f -> a -> b) -> f a -> f b
   toKeyValueList :: f v -> [(Key f, v)]
+  default toKeyValueList :: Foldable f => f v -> [(Key f, v)]
+  toKeyValueList = F.toList . mapWithKey (,)
+  {-# INLINABLE toKeyValueList #-}
   fromKeyValueList :: [(Key f ,v)] -> f v -- assumes Keys are distinct
-
 
 instance Ord k => KeyedCollection (M.Map k) where
   type Key (M.Map k) = k
@@ -108,3 +109,5 @@ instance KeyedCollection (S.Seq) where
   {-# INLINABLE toKeyValueList #-}    
   fromKeyValueList = S.fromList . fmap snd
   {-# INLINABLE fromKeyValueList #-}
+
+  

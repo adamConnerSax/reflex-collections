@@ -119,7 +119,7 @@ instance Ord k => ToPatchType (Map k) where
   withFunctorToSeqType = mapWithFunctorToDMap
   {-# INLINABLE makePatchSeq #-}
   makePatchSeq _ h =
-    PatchDMap . keyedCollectionWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv))
+    PatchDMap . mapWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv))
   {-# INLINABLE fromSeqType #-} 
   fromSeqType _ = dmapToMap
   {-# INLINABLE unsafeFromSeqType #-}
@@ -249,7 +249,7 @@ instance (Enum k, Bounded k, Ix k) => ToPatchType (Array k) where
   diffToFanType _ = intMapToDMapWithKey toEnum . mlMapMaybe id
 
 
--- various utilities for converting to and from underlying Patchable or Fannable types
+-- various utilities for converting to and from underlying Patchable types
   
 functorMappedToSeqType :: (SeqTypes f u, ToPatchType f) => Functor g => (Key f -> v -> g u) -> f v -> SeqType f u g
 functorMappedToSeqType h = withFunctorToSeqType . mapWithKey h 

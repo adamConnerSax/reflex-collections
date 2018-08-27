@@ -110,9 +110,7 @@ instance MapLike IntMap where
 -- patch x (createPatch x $ diffNoEq x y) = y
 -- patch x (createPatch x $ diff x y) = y
 class ( KeyedCollection f
-      , KeyedCollection (Diff f)
-      , MapLike (Diff f)
-      , Align (Diff f)) => Diffable (f :: Type -> Type) where
+      , KeyedCollection (Diff f)) => Diffable (f :: Type -> Type) where
   type Diff f :: Type -> Type -- keyed collection of ElemUpdates
   toDiff :: f a -> Diff f a -- a diff such that patch _ (toDiff x) = x
   patch :: f a -> Diff f a -> f a -- update f using a Diff, often ignores initial argument
@@ -125,7 +123,7 @@ class ( KeyedCollection f
   diffNoEq = alignDiffNoEq
   {-# INLINABLE diffNoEq #-}
   diff :: Eq v => f v -> f v -> Diff f (Maybe v)
-  default diff :: (Eq v, Align (Diff f)) => f v -> f v -> Diff f (Maybe v)
+  default diff :: (Eq v, Align (Diff f), MapLike (Diff f)) => f v -> f v -> Diff f (Maybe v)
   diff = alignMapLikeDiff
   {-# INLINABLE diff #-}
   diffOnlyKeyChanges :: f v -> f v -> Diff f (Maybe v)
