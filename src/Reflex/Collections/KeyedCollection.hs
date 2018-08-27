@@ -36,7 +36,7 @@ import qualified Data.Tree             as T
 import qualified Data.Foldable         as F
 import           Data.Witherable        (Filterable(..))
 import qualified Data.Key              as K
-import           Data.List            (groupBy)
+import           Data.List            (groupBy, sortBy)
 
 class Functor f => KeyedCollection (f :: Type -> Type) where
   type Key f :: Type

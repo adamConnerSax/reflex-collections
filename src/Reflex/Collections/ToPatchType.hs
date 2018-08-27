@@ -123,7 +123,7 @@ instance Ord k => ToPatchType (Map k) where
   {-# INLINABLE fromSeqType #-} 
   fromSeqType _ = dmapToMap
   {-# INLINABLE unsafeFromSeqType #-}
-  unsafeFromSeqType = patch M.empty . fromSeqType (Proxy :: Proxy (Map k))
+  unsafeFromSeqType = fromSeqType (Proxy :: Proxy (Map k))
   {-# INLINABLE makeFanKey #-}
   makeFanKey _ _ = Const2
   {-# INLINABLE doFan #-}
@@ -145,7 +145,7 @@ instance (Ord k, Eq k, Hashable k) => ToPatchType (HashMap k) where
   {-# INLINABLE fromSeqType #-}     
   fromSeqType _ = dmapToKeyedCollection
   {-# INLINABLE unsafeFromSeqType #-}  
-  unsafeFromSeqType = patch HM.empty . fromSeqType (Proxy :: Proxy (HashMap k))
+  unsafeFromSeqType = fromSeqType (Proxy :: Proxy (HashMap k))
   {-# INLINABLE makeFanKey #-}  
   makeFanKey _ _ = Const2
   {-# INLINABLE doFan #-}  
@@ -166,7 +166,7 @@ instance ToPatchType IntMap where
   {-# INLINABLE fromSeqType #-}       
   fromSeqType _ = fmap runIdentity . getCompose . unCI
   {-# INLINABLE unsafeFromSeqType #-}    
-  unsafeFromSeqType = patch IM.empty . fromSeqType (Proxy :: Proxy IntMap)
+  unsafeFromSeqType = fromSeqType (Proxy :: Proxy IntMap)
   {-# INLINABLE makePatchSeq #-}    
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv))
@@ -188,7 +188,7 @@ instance ToPatchType [] where
   {-# INLINABLE fromSeqType #-}         
   fromSeqType _ = fmap runIdentity . getCompose . unCI
   {-# INLINABLE unsafeFromSeqType #-}      
-  unsafeFromSeqType = patch [] . fromSeqType (Proxy :: Proxy ([]))
+  unsafeFromSeqType = (fmap snd . IM.toAscList) . fromSeqType (Proxy :: Proxy ([]))
   {-# INLINABLE makePatchSeq #-}      
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv))
@@ -210,7 +210,7 @@ instance ToPatchType (S.Seq) where
   {-# INLINABLE fromSeqType #-}           
   fromSeqType _ = fmap runIdentity . getCompose . unCI
   {-# INLINABLE unsafeFromSeqType #-}        
-  unsafeFromSeqType = patch S.empty . fromSeqType (Proxy :: Proxy (S.Seq))
+  unsafeFromSeqType = (S.fromList . fmap snd . IM.toAscList) . fromSeqType (Proxy :: Proxy (S.Seq))
   {-# INLINABLE makePatchSeq #-}        
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv))

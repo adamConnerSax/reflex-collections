@@ -22,12 +22,6 @@ module Reflex.Collections.Diffable
   (
     Diffable(..)
   , MapLike(..)
-  , createPatch
-  , applyDiff
-  , diff
-  , diffNoEq
-  , diffOnlyKeyChanges
-  , editDiffLeavingDeletes
   ) where
 
 import           Reflex.Collections.KeyedCollection (KeyedCollection(..))
@@ -50,6 +44,7 @@ import qualified Data.Array             as A
 import qualified Data.Sequence          as S
 import           Data.Tree              (Tree)
 import qualified Data.Foldable          as F
+import qualified Data.Key               as K
 
 class Functor f => MapLike f where
   mlEmpty :: f a
@@ -107,22 +102,17 @@ instance MapLike IntMap where
 -- and (Array k) needs a value for each key which Map may not have one.
 
 -- this class has laws:
--- patch _ (toDiff x) = x
--- patch x (createPatch x $ diffNoEq x y) = y
--- patch x (createPatch x $ diff x y) = y
+-- applyDiff (diff a b) a = b
+-- applyDiff (diffNoEq a b) a = b
+-- fromFullDiff . toDiff = id
 class ( KeyedCollection f
       , KeyedCollection (Diff f)) => Diffable (f :: Type -> Type) where
   type Diff f :: Type -> Type -- keyed collection of ElemUpdates
+  toDiff :: f a -> Diff f a
+  fromFullDiff :: Diff f a -> f a -- must satisfy (fromFullDiff . toDiff = id)
   applyDiff :: Diff f (Maybe v) -> f v -> f v
-  applyDiff d f = patch f (createPatch d f)
-  {-# INLINABlE applyDiff #-}
-  toDiff :: f a -> Diff f a -- a diff such that patch _ (toDiff x) = x
-  patch :: f a -> Diff f a -> f a -- update f using a Diff, often ignores initial argument
-  patch old d = applyDiff (Just <$> d) old
-  createPatch :: Diff f (Maybe v) -> f v -> Diff f v
-  default createPatch :: MapLike (Diff f) => Diff f (Maybe v) -> f v -> Diff f v
-  createPatch = mapLikeCreatePatch
-  {-# INLINABLE createPatch #-}
+  default applyDiff :: MapLike (Diff f) => Diff f (Maybe v) -> f v -> f v
+  applyDiff d old = fromFullDiff $ diffMaybeToDiff d old
   diffNoEq :: f v -> f v -> Diff f (Maybe v)
   default diffNoEq :: Align (Diff f) => f v -> f v -> Diff f (Maybe v)
   diffNoEq = alignDiffNoEq
@@ -142,63 +132,60 @@ class ( KeyedCollection f
   
 instance Ord k => Diffable (Map k) where
   type Diff (Map k) = Map k
-  {-# INLINABLE toDiff #-}
   toDiff = id
-  {-# INLINABLE patch #-}
-  patch _ = id
-
+  fromFullDiff = id
+  
 instance (Eq k, Hashable k) => Diffable (HashMap k) where
   type Diff (HashMap k) = HashMap k
-  {-# INLINABLE toDiff #-}  
   toDiff = id
-  {-# INLINABLE patch #-}  
-  patch _ = id
+  fromFullDiff = id
+
 
 instance Diffable IntMap where
   type Diff IntMap = IntMap
-  {-# INLINABLE toDiff #-}    
   toDiff = id
-  {-# INLINABLE patch #-}    
-  patch _ = id
+  fromFullDiff = id
+
 
 instance Diffable ([]) where
   type Diff ([]) = IntMap
-  {-# INLINABLE toDiff #-}      
   toDiff = IM.fromAscList . zip [0..]
-  {-# INLINABLE patch #-}      
-  patch _ = fmap snd . IM.toAscList
+  fromFullDiff = (fmap snd . IM.toAscList)
 
 instance Diffable (S.Seq) where
   type Diff (S.Seq) = IntMap
-  {-# INLINABLE toDiff #-}        
   toDiff = IM.fromAscList . zip [0..] . F.toList
-  {-# INLINABLE patch #-}        
-  patch _ = S.fromList . fmap snd . IM.toAscList
+  fromFullDiff = S.fromList . fmap snd . IM.toAscList
   
-instance (Enum k, Ix k) => Diffable (Array k) where
+instance (Enum k, Ix k, Bounded k) => Diffable (Array k) where
   type Diff (Array k) = IntMap
-  {-# INLINABLE toDiff #-}          
   toDiff = IM.fromAscList . fmap (\(k,v) -> (fromEnum k, v)) . A.assocs
-  {-# INLINABLE patch #-}        
-  patch old x = old A.// (fmap (\(n,v) -> (toEnum n,v)) $ IM.toAscList x) -- Array must keep old ones if no update.  It's "Total"
+  fromFullDiff = A.listArray (minBound,maxBound) . fmap snd . IM.toAscList
+  {-# INLINABLE fromFullDiff #-}
+  applyDiff d old = old A.// fmap (\(n,v) -> (toEnum n, v)) (IM.toAscList $ diffMaybeToDiff d old)
+  {-# INLINABLE applyDiff #-}
   diffNoEq old new = Just <$> toDiff new
   diffOnlyKeyChanges _ _ = IM.empty
   editDiffLeavingDeletes _ _ _ = IM.empty
 
 instance Diffable Tree where
   type Diff Tree = Map (S.Seq Int)
-  toDiff = M.fromList . toKeyValueList
+  toDiff = {- K.foldMapWithKey (\k v -> M.singleton k v) -} M.fromList . toKeyValueList
+  fromFullDiff = fromKeyValueList . M.toAscList
   -- TODO: do this right. 
-  applyDiff d old = fromKeyValueList . M.assocs . M.mapMaybe id $ M.union d (Just <$> toDiff old)   
-  
+--  applyDiff d old = fromKeyValueList . M.toAscList . M.mapMaybe id $ M.union d (Just <$> toDiff old)
+
 -- default implementations for MapLike and Alignable containers  
 -- a patch is ready to be made back into the original type but how depends on the type, via "patch"
-mapLikeCreatePatch :: (Diffable f, MapLike (Diff f)) => Diff f (Maybe v) -> f v -> Diff f v
-mapLikeCreatePatch d old =
+mapLikeApplyDiff :: (Diffable f, MapLike (Diff f)) => (Diff f v -> f v) -> Diff f (Maybe v) -> f v -> f v
+mapLikeApplyDiff fromDiff d old = fromDiff $ diffMaybeToDiff d old
+
+diffMaybeToDiff :: (Diffable f, MapLike (Diff f)) => Diff f (Maybe v) -> f v -> Diff f v
+diffMaybeToDiff d old =
   let deletions = mlFilter isNothing d
       insertions = mlMapMaybe id  $ d `mlDifference` deletions
   in insertions `mlUnion` ((toDiff old) `mlDifference` deletions)
-{-# INLINABLE mapLikeCreatePatch #-}
+{-# INLINABLE diffMaybeToDiff #-}
 
 alignDiffNoEq :: (Diffable f, Align (Diff f)) => f v -> f v -> Diff f (Maybe v)
 alignDiffNoEq old new =  flip fmap (align (toDiff old) (toDiff new)) $ \case
