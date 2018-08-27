@@ -9,6 +9,7 @@ import           Data.Array                         (Array, Ix, listArray)
 import           Data.IntMap                        (IntMap)
 import           Data.Map                           (Map)
 import           Data.Sequence                      (Seq)
+import           Data.Tree                          (Tree)
 import           Reflex.Collections.Diffable        (Diffable (..),
                                                      MapLike (..), createPatch,
                                                      diff, diffNoEq)
@@ -72,8 +73,11 @@ main = hspec $ do
     do it "prop_KC_mapPreservesKeys (Map Int Int)" $ property (prop_KC_mapPreservesKeys :: (Int -> Int -> Int) -> Map Int Int -> Bool)
        it "prop_KC_mapPreservesKeys (IntMap String)" $ property (prop_KC_mapPreservesKeys :: (Int -> String -> String) -> IntMap String -> Bool)
   describe "Keyed Collection: keyValueList properties" $
-    do it "prop_KC_keyValueListIso (Map Int Int)" $ property (prop_KC_keyValueListIso :: Map Int Int -> Bool)
+    do it "prop_KC_keyValueListIso ([Int])" $ property (prop_KC_keyValueListIso :: [Int] -> Bool)
+       it "prop_KC_keyValueListIso (Seq Int)" $ property (prop_KC_keyValueListIso :: Seq Int -> Bool)
+       it "prop_KC_keyValueListIso (Map Int Int)" $ property (prop_KC_keyValueListIso :: Map Int Int -> Bool)
        it "prop_KC_keyValueListIso (IntMap Double)" $ property (prop_KC_keyValueListIso :: IntMap Double -> Bool)
+       it "prop_KC_keyValueListIso (Tree 'Char')" $ property (prop_KC_keyValueListIso :: Tree Char -> Bool)
   describe "MapLike: filter & mapMaybe" $
     do it "prop_MapLike_FilterAll (Map Int Int)" $ property (prop_MapLike_FilterAll :: Map Int Int -> Bool)
   describe "MapLike: union and intersection" $
@@ -83,10 +87,13 @@ main = hspec $ do
     do it "prop_Diffable_PatchLaw (Map Int Int)" $ property (prop_Diffable_PatchLaw :: Map Int Int -> Map Int Int -> Bool)
        it "prop_Diffable_PatchLaw (TotalArray ArrayKeys Int)" $ property (prop_Diffable_PatchLaw :: TotalArray ArrayKeys Int -> TotalArray ArrayKeys Int -> Bool)
        it "prop_Diffable_PatchLaw ([Int])" $ property (prop_Diffable_PatchLaw :: [Int] -> [Int] -> Bool)
+       it "prop_Diffable_PatchLaw (Tree Char)" $ property (prop_Diffable_PatchLaw :: Tree Char -> Tree Char -> Bool)
   describe "Diffable: diff laws" $
     do it "prop_Diffable_DiffLawNoEq (Map Int Int)" $ property (prop_Diffable_DiffLawNoEq :: Map Int Int -> Map Int Int -> Bool)
        it "prop_Diffable_DiffLawNoEq (IntMap String)" $ property (prop_Diffable_DiffLawNoEq :: IntMap String -> IntMap String -> Bool)
        it "prop_Diffable_DiffLawNoEq (TotalArray ArrayKeys Int)" $ property (prop_Diffable_DiffLawNoEq :: TotalArray ArrayKeys Int -> TotalArray ArrayKeys Int -> Bool)
+       it "prop_Diffable_DiffLawNoEq (Tree Char)" $ property (prop_Diffable_DiffLawNoEq :: Tree Char -> Tree Char -> Bool)
        it "prop_Diffable_DiffLaw (Map Int Int)" $ property (prop_Diffable_DiffLaw :: Map Int Int -> Map Int Int -> Bool)
        it "prop_Diffable_DiffLaw (IntMap String)" $ property (prop_Diffable_DiffLaw :: IntMap String -> IntMap String -> Bool)
        it "prop_Diffable_DiffLaw (TotalArray ArrayKeys Int)" $ property (prop_Diffable_DiffLaw :: TotalArray ArrayKeys Int -> TotalArray ArrayKeys Int -> Bool)
+       it "prop_Diffable_DiffLaw (Tree Char)" $ property (prop_Diffable_DiffLaw :: Tree Char -> Tree Char -> Bool)

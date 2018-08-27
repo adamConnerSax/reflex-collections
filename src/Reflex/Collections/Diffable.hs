@@ -48,6 +48,7 @@ import qualified Data.HashMap.Strict    as HM
 import           Data.Array             (Array, Ix)
 import qualified Data.Array             as A
 import qualified Data.Sequence          as S
+import           Data.Tree              (Tree)
 import qualified Data.Foldable          as F
 
 class Functor f => MapLike f where
@@ -112,8 +113,12 @@ instance MapLike IntMap where
 class ( KeyedCollection f
       , KeyedCollection (Diff f)) => Diffable (f :: Type -> Type) where
   type Diff f :: Type -> Type -- keyed collection of ElemUpdates
+  applyDiff :: Diff f (Maybe v) -> f v -> f v
+  applyDiff d f = patch f (createPatch d f)
+  {-# INLINABlE applyDiff #-}
   toDiff :: f a -> Diff f a -- a diff such that patch _ (toDiff x) = x
   patch :: f a -> Diff f a -> f a -- update f using a Diff, often ignores initial argument
+  patch old d = applyDiff (Just <$> d) old
   createPatch :: Diff f (Maybe v) -> f v -> Diff f v
   default createPatch :: MapLike (Diff f) => Diff f (Maybe v) -> f v -> Diff f v
   createPatch = mapLikeCreatePatch
@@ -176,11 +181,16 @@ instance (Enum k, Ix k) => Diffable (Array k) where
   toDiff = IM.fromAscList . fmap (\(k,v) -> (fromEnum k, v)) . A.assocs
   {-# INLINABLE patch #-}        
   patch old x = old A.// (fmap (\(n,v) -> (toEnum n,v)) $ IM.toAscList x) -- Array must keep old ones if no update.  It's "Total"
+  diffNoEq old new = Just <$> toDiff new
+  diffOnlyKeyChanges _ _ = IM.empty
+  editDiffLeavingDeletes _ _ _ = IM.empty
 
-applyDiff :: Diffable f => Diff f (Maybe v) -> f v -> f v
-applyDiff d f = patch f (createPatch d f)
-{-# INLINABLE applyDiff #-}
-
+instance Diffable Tree where
+  type Diff Tree = Map (S.Seq Int)
+  toDiff = M.fromList . toKeyValueList
+  -- TODO: do this right. 
+  applyDiff d old = fromKeyValueList . M.assocs . M.mapMaybe id $ M.union d (Just <$> toDiff old)   
+  
 -- default implementations for MapLike and Alignable containers  
 -- a patch is ready to be made back into the original type but how depends on the type, via "patch"
 mapLikeCreatePatch :: (Diffable f, MapLike (Diff f)) => Diff f (Maybe v) -> f v -> Diff f v

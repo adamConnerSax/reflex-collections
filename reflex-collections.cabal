@@ -48,6 +48,7 @@ library
                      , array
                      , reflex
                      , lens
+                     , keys
                      , mtl
                      , ref-tf
                      , containers

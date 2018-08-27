@@ -57,7 +57,7 @@ class ( R.Patch (pd Identity)
   sequenceWithPatch :: R.Adjustable t m => d m -> R.Event t (pd m) -> m (d Identity, R.Event t (pd Identity))
   patchPairToDynamic :: (R.MonadHold t m, R.Reflex t) => d Identity -> R.Event t (pd Identity) -> m (R.Dynamic t (d Identity))
 
--- | DMaps are our prime example of something sequenceable
+-- | DMaps and IntMaps are our prime examples of something sequenceable
 instance (GCompare (Const2 k a), Ord k) => PatchSequenceable (DMap (Const2 k a)) (PatchDMap (Const2 k a)) where
   {-# INLINABLE sequenceWithPatch #-}
   sequenceWithPatch :: R.Adjustable t m
