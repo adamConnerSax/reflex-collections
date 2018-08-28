@@ -30,14 +30,16 @@
 --
 -- The original versions in Reflex are identical to these (with one exception, noted below) but only work for `Data.Map.Strict`
 -- The versions below, with the same names, work exactly the same way as their counterparts but work for more types,
--- including HashMap, IntMap, [], Sequence.Seq and Array.
+-- including HashMap, IntMap, [], Data.Sequence.Seq, Data.Tree.Tree and Array.
 -- The Array case is special, and will only work for arrays that have values for every possible key,
 -- representing a sort of total function from the key type (usually a bounded enumeration) to the contained type.
+-- Tree and Array will work only with listHoldWithKey because they cannot be empty and the rest of the functions require an
+-- empty collection to work.
 --
 -- This package also provides typeclasses and typefamilies that should make adding support for a new collection type fairly
 -- straightforward.
 --
--- Because the operations are related, we also provide generalized versions of Reflex's `distributeMapOverDynPure` and `mergeMap`
+-- Because the operations are related, this module also provide generalized versions of Reflex's `distributeMapOverDynPure` and `mergeMap`
 --
 -- One complication of the more general versions is the introduction of the type "Diff f",
 -- specified for each type inside the `Diffable` type class. For map-like types, `Diff f` is the same as f but for other types, e.g. `[]`,
@@ -86,6 +88,7 @@ import           Data.HashMap.Strict                (HashMap)
 import           Data.IntMap                        (IntMap)
 import           Data.Map                           (Map)
 import           Data.Sequence                      (Seq)
+import           Data.Tree                          (Tree)
 
 -- If we only want to support ghc8+, we could replace proxies with type application.
 
@@ -291,27 +294,32 @@ type ReflexC2 t m = (ReflexC1 t m, MonadFix m, R.PostBuild t m)
 {-# SPECIALIZE listHoldWithKey :: ReflexC1 t m => [v] -> R.Event t (IntMap (Maybe v)) -> (Int -> v -> m a) -> m (R.Dynamic t [a]) #-}
 {-# SPECIALIZE listHoldWithKey :: ReflexC1 t m => Seq v -> R.Event t (IntMap (Maybe v)) -> (Int -> v -> m a) -> m (R.Dynamic t (Seq a)) #-}
 {-# SPECIALIZE listHoldWithKey :: (ReflexC1 t m, Ix k, Enum k, Bounded k) => Array k v -> R.Event t (IntMap (Maybe v)) -> (k -> v -> m a) -> m (R.Dynamic t (Array k a)) #-}
+{-# SPECIALIZE listHoldWithKey :: ReflexC1 t m => Tree v -> R.Event t (Map (Seq Int) (Maybe v)) -> (Seq Int -> v -> m a) -> m (R.Dynamic t (Tree a)) #-}
 
 {-# SPECIALIZE listWithKey :: (ReflexC2 t m, Ord k) => R.Dynamic t (Map k v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Map k a)) #-}
 {-# SPECIALIZE listWithKey :: (ReflexC2 t m, Hashable k, Ord k) => R.Dynamic t (HashMap k v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (HashMap k a)) #-}
 {-# SPECIALIZE listWithKey :: ReflexC2 t m => R.Dynamic t (IntMap v) -> (Int -> R.Dynamic t v -> m a) -> m (R.Dynamic t (IntMap a)) #-}
 {-# SPECIALIZE listWithKey :: ReflexC2 t m => R.Dynamic t [v] -> (Int -> R.Dynamic t v -> m a) -> m (R.Dynamic t [a]) #-}
 {-# SPECIALIZE listWithKey :: ReflexC2 t m => R.Dynamic t (Seq v) -> (Int -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Seq a)) #-}
+--{-# SPECIALIZE listWithKey :: ReflexC2 t m => R.Dynamic t (Tree v) -> (Seq Int -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Tree a)) #-}
 
 {-# SPECIALIZE listViewWithKey :: (ReflexC2 t m, Ord k) => R.Dynamic t (Map k v) -> (k -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Map k a)) #-}
 {-# SPECIALIZE listViewWithKey :: (ReflexC2 t m, Hashable k, Ord k) => R.Dynamic t (HashMap k v) -> (k -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (HashMap k a)) #-}
 {-# SPECIALIZE listViewWithKey :: ReflexC2 t m => R.Dynamic t (IntMap v) -> (Int -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (IntMap a)) #-}
 {-# SPECIALIZE listViewWithKey :: ReflexC2 t m => R.Dynamic t [v] -> (Int -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (IntMap a)) #-}
 {-# SPECIALIZE listViewWithKey :: ReflexC2 t m => R.Dynamic t (Seq v) -> (Int -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (IntMap a)) #-}
+--{-# SPECIALIZE listViewWithKey :: ReflexC2 t m => R.Dynamic t (Tree v) -> (Seq Int -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Map (Seq Int) a)) #-}
 
 {-# SPECIALIZE listWithKeyShallowDiff :: (ReflexC2 t m, Ord k) => Map k v -> R.Event t (Map k (Maybe v)) -> (k -> v -> R.Event t v -> m a) -> m (R.Dynamic t (Map k a)) #-}
 {-# SPECIALIZE listWithKeyShallowDiff :: (ReflexC2 t m, Ord k, Hashable k) => HashMap k v -> R.Event t (HashMap k (Maybe v)) -> (k -> v -> R.Event t v -> m a) -> m (R.Dynamic t (HashMap k a)) #-}
 {-# SPECIALIZE listWithKeyShallowDiff :: ReflexC2 t m => IntMap v -> R.Event t (IntMap (Maybe v)) -> (Int -> v -> R.Event t v -> m a) -> m (R.Dynamic t (IntMap a)) #-}
 {-# SPECIALIZE listWithKeyShallowDiff :: ReflexC2 t m => [v] -> R.Event t (IntMap (Maybe v)) -> (Int -> v -> R.Event t v -> m a) -> m (R.Dynamic t [a]) #-}
 {-# SPECIALIZE listWithKeyShallowDiff :: ReflexC2 t m => Seq v -> R.Event t (IntMap (Maybe v)) -> (Int -> v -> R.Event t v -> m a) -> m (R.Dynamic t (Seq a)) #-}
+--{-# SPECIALIZE listWithKeyShallowDiff :: ReflexC2 t m => Tree v -> R.Event t (Map (Seq Int) (Maybe v)) -> (Seq Int -> v -> R.Event t v -> m a) -> m (R.Dynamic t (Tree a)) #-}
 
 {-# SPECIALIZE selectViewListWithKey :: (ReflexC2 t m, Ord k) => R.Dynamic t k -> R.Dynamic t (Map k v) -> (k -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (k, a)) #-}
 {-# SPECIALIZE selectViewListWithKey :: (ReflexC2 t m, Ord k, Hashable k) => R.Dynamic t k -> R.Dynamic t (HashMap k v) -> (k -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (k, a)) #-}
 {-# SPECIALIZE selectViewListWithKey :: ReflexC2 t m => R.Dynamic t Int -> R.Dynamic t (IntMap v) -> (Int -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (Int, a)) #-}
 {-# SPECIALIZE selectViewListWithKey :: ReflexC2 t m => R.Dynamic t Int -> R.Dynamic t [v] -> (Int -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (Int, a)) #-}
 {-# SPECIALIZE selectViewListWithKey :: ReflexC2 t m => R.Dynamic t Int -> R.Dynamic t (Seq v) -> (Int -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (Int, a)) #-}
+--{-# SPECIALIZE selectViewListWithKey :: ReflexC2 t m => R.Dynamic t (Seq Int) -> R.Dynamic t (Tree v) -> (Seq Int -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (Seq Int, a)) #-}
