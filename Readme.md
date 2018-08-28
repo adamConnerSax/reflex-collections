@@ -2,12 +2,12 @@ reflex-collections
 
 A re-implementation of the collection functions from Reflex.  
 
-This library reimplements `listHoldWithKey`, `listWithKey`, `list`, `listViewWithKey`, and `selectViewListWithKey` using some typeclass and associted type-family machinery to make these functions
+This library reimplements `listHoldWithKey`, `listWithKey`, `list`, `listViewWithKey`, and `selectViewListWithKey` using some typeclass and associated type-family machinery to make these functions
 more polymorphic.  The originals operate only on `Ord k => Data.Map.Map k` these will operate on `Ord k => Map k`, `IntMap`, `(Hashable k, Ord k) => HashMap k`,
 `Tree`, `[]`, `Data.Sequence.Seq`, and, for only `listHoldWithKey`, will also 
 work on `(Enum k, Bounded k, Ix k) => Data.Array k`, a sort of "Total Map", holding a value for every `k`.  It should also be straightforward to add class instances for other collections so these functions will work on them directly.
 
-Along the way, we get more polymorphic versions of `Reflex.mergeMap` (`Reflex.Collections.Collections.mergeOver`) and `distributeMapOverDynPure` (`Reflex.Collections.Collections.distributeOverDynPure`).  `mergeOver` returns `Event t (Diff f a)` rather than `Event t (f a)` since events will only fire on subsets and subsets don't make sense for all containers, though they do for all diffs. 
+Along the way, we get more polymorphic versions of `Reflex.mergeMap` (`Reflex.Collections.Collections.mergeOver`) and `distributeMapOverDynPure` (`Reflex.Collections.Collections.distributeOverDynPure`).  `mergeOver` returns `Event t (Diff f a)` rather than `Event t (f a)` since events will only fire on subsets and subsets don't make sense for all containers, though they do for all diffs. For the various map-like types (`Map`, `HashMap`, `IntMap`), the diffs are the same type as the collection itself so this change is invisible.
 
 There are several typeclasses, each of which abstracts out a piece of the functionality required for the listXXX functions to operate on a collection:
 
