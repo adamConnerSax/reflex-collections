@@ -14,6 +14,7 @@ import           Reflex.Collections.Diffable        (Diffable (..),
                                                      MapLike (..))
 import           Reflex.Collections.KeyedCollection (KeyedCollection (..))
 import           Test.Hspec
+import           Test.Invariant
 import           Test.QuickCheck
 import           Test.QuickCheck.Instances
 import           Text.Show.Functions

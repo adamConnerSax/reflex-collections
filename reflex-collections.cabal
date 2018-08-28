@@ -155,6 +155,7 @@ Test-Suite hspec
                , containers
                , QuickCheck
                , quickcheck-instances
+               , test-invariant
                , hspec
                     
     

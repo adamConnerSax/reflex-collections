@@ -36,7 +36,8 @@ import qualified Data.Tree             as T
 import qualified Data.Foldable         as F
 import           Data.Witherable        (Filterable(..))
 import qualified Data.Key              as K
-import           Data.List            (groupBy, sortBy)
+import           Data.List            (groupBy, sortBy, sortOn)
+import           Data.Monoid          ((<>))
 
 class Functor f => KeyedCollection (f :: Type -> Type) where
   type Key f :: Type
@@ -82,8 +83,11 @@ instance KeyedCollection (T.Tree) where
   -- removeTail is the sequence equivalent of inits
   -- sameTail checks if last element of the sequences is the same
   -- this groups the list by the tail of the key, uses the head of the result to make a node with a forest fromt the groups
-  fromKeyValueList ((_,x) : kvs) = T.Node x  $ fmap (fromKeyValueList . fmap removeTail) $ groupBy sameTail kvs where
-    removeTail (k, y) = let inits :> _ = S.viewr k in (inits, y)
+  -- initial sort is required since the required order is the reverse of the ORD order. TODO: We can fix?
+  fromKeyValueList kvl = go $ sortBy compareKey kvl where
+    go ((_ , x) : kvs) = T.Node x  $ fmap (go . fmap removeKeyTail) $ groupBy sameTail kvs 
+    removeKeyTail (k, y) = let inits :> _ = S.viewr k in (inits, y)
+    compareKey (k1 , _) (k2 , _) = compare (S.reverse k1) (S.reverse k2)
     sameTail :: (S.Seq Int, a) -> (S.Seq Int, a) -> Bool
     sameTail (k1,_) (k2,_) = case S.viewr k1 of
       _ :> n  -> case S.viewr k2 of

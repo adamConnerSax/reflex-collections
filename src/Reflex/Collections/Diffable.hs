@@ -170,10 +170,8 @@ instance (Enum k, Ix k, Bounded k) => Diffable (Array k) where
 
 instance Diffable Tree where
   type Diff Tree = Map (S.Seq Int)
-  toDiff = {- K.foldMapWithKey (\k v -> M.singleton k v) -} M.fromList . toKeyValueList
-  fromFullDiff = fromKeyValueList . M.toAscList
-  -- TODO: do this right. 
---  applyDiff d old = fromKeyValueList . M.toAscList . M.mapMaybe id $ M.union d (Just <$> toDiff old)
+  toDiff = K.foldMapWithKey (\k v -> M.singleton k v)  --M.fromList . toKeyValueList
+  fromFullDiff = fromKeyValueList . M.toAscList 
 
 -- default implementations for MapLike and Alignable containers  
 -- a patch is ready to be made back into the original type but how depends on the type, via "patch"

@@ -46,6 +46,7 @@ import           Data.Functor.Identity   (Identity(..), runIdentity)
 import           Data.Proxy              (Proxy (..))
 import           Data.Kind               (Type)
 
+import           Data.Tree               (Tree)
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.IntMap (IntMap)
@@ -57,6 +58,7 @@ import           Data.Array (Array, Ix)
 import qualified Data.Array              as A
 import qualified Data.Sequence           as S
 import qualified Data.Foldable           as F
+
 
 -- | Generalize distributeMapOverDynPure
 -- NB: Use of "unsafeFromSeqType" is okay here since we know there is a value for every key in the input
@@ -107,7 +109,7 @@ class (KeyedCollection f, Diffable f) => ToPatchType (f :: Type -> Type) where
   doDiffFan :: (R.Reflex t, DM.GCompare (FanKey f v)) => Proxy f -> R.Event t (Diff f (Maybe v)) -> R.EventSelector t (FanKey f v)
   doDiffFan pf = R.fan . fmap (diffToFanType pf) 
   
--- Map and HashMap use DMap for merging and sequencing
+-- Map, HashMap and Tree use DMap for merging and sequencing
 
 instance SeqTypes (Map k) v where
   type SeqType (Map k) v = DMap (Const2 k v)
@@ -123,7 +125,7 @@ instance Ord k => ToPatchType (Map k) where
   {-# INLINABLE fromSeqType #-} 
   fromSeqType _ = dmapToMap
   {-# INLINABLE unsafeFromSeqType #-}
-  unsafeFromSeqType = fromSeqType (Proxy :: Proxy (Map k))
+  unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy (Map k))
   {-# INLINABLE makeFanKey #-}
   makeFanKey _ _ = Const2
   {-# INLINABLE doFan #-}
@@ -145,7 +147,29 @@ instance (Ord k, Eq k, Hashable k) => ToPatchType (HashMap k) where
   {-# INLINABLE fromSeqType #-}     
   fromSeqType _ = dmapToKeyedCollection
   {-# INLINABLE unsafeFromSeqType #-}  
-  unsafeFromSeqType = fromSeqType (Proxy :: Proxy (HashMap k))
+  unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy (HashMap k))
+  {-# INLINABLE makeFanKey #-}  
+  makeFanKey _ _ = Const2
+  {-# INLINABLE doFan #-}  
+  doFan =  R.fan . fmap keyedCollectionToDMap
+  {-# INLINABLE diffToFanType #-}  
+  diffToFanType _ = keyedCollectionToDMap . mlMapMaybe id
+
+instance SeqTypes Tree v where
+  type SeqType Tree v = DMap (Const2 (S.Seq Int) v)
+  type SeqPatchType Tree v = PatchDMap (Const2 (S.Seq Int) v)
+
+instance ToPatchType Tree where
+  type FanKey Tree = Const2 (S.Seq Int)
+  {-# INLINABLE withFunctorToSeqType #-}  
+  withFunctorToSeqType = keyedCollectionWithFunctorToDMap
+  {-# INLINABLE makePatchSeq #-}  
+  makePatchSeq _ h =
+    PatchDMap . keyedCollectionWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv))
+  {-# INLINABLE fromSeqType #-}     
+  fromSeqType _ = dmapToKeyedCollection
+  {-# INLINABLE unsafeFromSeqType #-}  
+  unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy Tree)
   {-# INLINABLE makeFanKey #-}  
   makeFanKey _ _ = Const2
   {-# INLINABLE doFan #-}  
@@ -166,7 +190,7 @@ instance ToPatchType IntMap where
   {-# INLINABLE fromSeqType #-}       
   fromSeqType _ = fmap runIdentity . getCompose . unCI
   {-# INLINABLE unsafeFromSeqType #-}    
-  unsafeFromSeqType = fromSeqType (Proxy :: Proxy IntMap)
+  unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy IntMap)
   {-# INLINABLE makePatchSeq #-}    
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv))
@@ -188,7 +212,7 @@ instance ToPatchType [] where
   {-# INLINABLE fromSeqType #-}         
   fromSeqType _ = fmap runIdentity . getCompose . unCI
   {-# INLINABLE unsafeFromSeqType #-}      
-  unsafeFromSeqType = (fmap snd . IM.toAscList) . fromSeqType (Proxy :: Proxy ([]))
+  unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy ([]))
   {-# INLINABLE makePatchSeq #-}      
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv))
@@ -210,7 +234,7 @@ instance ToPatchType (S.Seq) where
   {-# INLINABLE fromSeqType #-}           
   fromSeqType _ = fmap runIdentity . getCompose . unCI
   {-# INLINABLE unsafeFromSeqType #-}        
-  unsafeFromSeqType = (S.fromList . fmap snd . IM.toAscList) . fromSeqType (Proxy :: Proxy (S.Seq))
+  unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy (S.Seq))
   {-# INLINABLE makePatchSeq #-}        
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv))
@@ -237,7 +261,7 @@ instance (Enum k, Bounded k, Ix k) => ToPatchType (Array k) where
   {-# INLINABLE fromSeqType #-}             
   fromSeqType _ = fmap runIdentity . getCompose . unCI
   {-# INLINABLE unsafeFromSeqType #-}          
-  unsafeFromSeqType = A.listArray (minBound,maxBound) . fmap snd . IM.toAscList . fromSeqType (Proxy :: Proxy (Array k))
+  unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy (Array k))
   {-# INLINABLE makePatchSeq #-}          
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> fmap (h $ toEnum n) mv) -- IM.fromAscList . zip [0..] . fmap (\(k,v) -> Just $ h k v)
@@ -247,7 +271,6 @@ instance (Enum k, Bounded k, Ix k) => ToPatchType (Array k) where
   doFan = R.fan . fmap keyedCollectionToDMap
   {-# INLINABLE diffToFanType #-}          
   diffToFanType _ = intMapToDMapWithKey toEnum . mlMapMaybe id
-
 
 -- various utilities for converting to and from underlying Patchable types
   
