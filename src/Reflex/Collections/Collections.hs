@@ -1,11 +1,8 @@
 {-# LANGUAGE CPP                   #-}
 {-# LANGUAGE ConstraintKinds       #-}
-{-# LANGUAGE DefaultSignatures     #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE InstanceSigs          #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE RecursiveDo           #-}
@@ -253,7 +250,7 @@ hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent vals = mdo
                    [ R.updated vals
                    , R.tag (R.current vals) postBuild
                    ] --TODO: This should probably be added to the attachWith, not to the updated; if we were using diffMap instead of diffMapNoEq, I think it might not work
-  return $ (emptyContainer', changeVals)
+  return (emptyContainer', changeVals)
 {-# INLINABLE hasEmptyDiffableDynamicToInitialPlusKeyDiffEvent #-}
 
 -- if we don't have an empty state (e.g., Array k v), we can sample but this is..not ideal.
@@ -267,7 +264,7 @@ sampledDiffableDynamicToInitialPlusKeyDiffEvent vals = do
   rec sentVals :: R.Dynamic t (f v) <- R.foldDyn applyDiff v0 changeVals
       let changeVals :: R.Event t (Diff f (Maybe v))
           changeVals = R.attachWith diffOnlyKeyChanges (R.current sentVals) $ R.updated vals
-  return $ (v0, changeVals)
+  return (v0, changeVals)
 {-# INLINABLE sampledDiffableDynamicToInitialPlusKeyDiffEvent #-}
 
 -- NB: This only works in non-recursive widgets.  But that may be enough.
@@ -280,7 +277,7 @@ sampledListWithKey :: ( R.Adjustable t m
                       , Functor (Diff f)
                       , GCompare (FanKey f v))
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
-sampledListWithKey vals mkChild = listWithKey' sampledDiffableDynamicToInitialPlusKeyDiffEvent vals mkChild
+sampledListWithKey = listWithKey' sampledDiffableDynamicToInitialPlusKeyDiffEvent
 {-# INLINABLE sampledListWithKey #-}
 
 type ReflexC1 t m = (R.Adjustable t m, R.MonadHold t m)

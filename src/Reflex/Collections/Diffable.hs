@@ -3,10 +3,8 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE InstanceSigs          #-}
 {-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE RecursiveDo           #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE DefaultSignatures     #-}
@@ -31,6 +29,10 @@ import           Data.Kind              (Type)
 import           Data.Align             (Align(..))
 import           Data.These             (These(..))
 import           Data.Maybe             (isNothing)
+import           Control.Arrow (first)
+import qualified Data.Foldable          as F
+import qualified Data.Key               as K
+
 
 import           Data.Map               (Map)
 import qualified Data.Map               as M
@@ -43,8 +45,6 @@ import           Data.Array             (Array, Ix)
 import qualified Data.Array             as A
 import qualified Data.Sequence          as S
 import           Data.Tree              (Tree)
-import qualified Data.Foldable          as F
-import qualified Data.Key               as K
 
 class Functor f => MapLike f where
   mlEmpty :: f a
@@ -147,42 +147,39 @@ instance Diffable IntMap where
   fromFullDiff = id
 
 
-instance Diffable ([]) where
-  type Diff ([]) = IntMap
+instance Diffable [] where
+  type Diff [] = IntMap
   toDiff = IM.fromAscList . zip [0..]
-  fromFullDiff = (fmap snd . IM.toAscList)
+  fromFullDiff = fmap snd . IM.toAscList
 
-instance Diffable (S.Seq) where
-  type Diff (S.Seq) = IntMap
+instance Diffable S.Seq where
+  type Diff S.Seq = IntMap
   toDiff = IM.fromAscList . zip [0..] . F.toList
   fromFullDiff = S.fromList . fmap snd . IM.toAscList
   
 instance (Enum k, Ix k, Bounded k) => Diffable (Array k) where
   type Diff (Array k) = IntMap
-  toDiff = IM.fromAscList . fmap (\(k,v) -> (fromEnum k, v)) . A.assocs
+  toDiff = IM.fromAscList . fmap (first fromEnum) . A.assocs
   fromFullDiff = A.listArray (minBound,maxBound) . fmap snd . IM.toAscList
   {-# INLINABLE fromFullDiff #-}
-  applyDiff d old = old A.// fmap (\(n,v) -> (toEnum n, v)) (IM.toAscList $ diffMaybeToDiff d old)
+  applyDiff d old = old A.// fmap (first toEnum) (IM.toAscList $ diffMaybeToDiff d old)
   {-# INLINABLE applyDiff #-}
-  diffNoEq old new = Just <$> toDiff new
+  diffNoEq _ new = Just <$> toDiff new
   diffOnlyKeyChanges _ _ = IM.empty
   editDiffLeavingDeletes _ _ _ = IM.empty
 
 instance Diffable Tree where
   type Diff Tree = Map (S.Seq Int)
-  toDiff = K.foldMapWithKey (\k v -> M.singleton k v)  --M.fromList . toKeyValueList
+  toDiff = K.foldMapWithKey M.singleton  --M.fromList . toKeyValueList
   fromFullDiff = fromKeyValueList . M.toAscList 
 
 -- default implementations for MapLike and Alignable containers  
 -- a patch is ready to be made back into the original type but how depends on the type, via "patch"
-mapLikeApplyDiff :: (Diffable f, MapLike (Diff f)) => (Diff f v -> f v) -> Diff f (Maybe v) -> f v -> f v
-mapLikeApplyDiff fromDiff d old = fromDiff $ diffMaybeToDiff d old
-
 diffMaybeToDiff :: (Diffable f, MapLike (Diff f)) => Diff f (Maybe v) -> f v -> Diff f v
 diffMaybeToDiff d old =
   let deletions = mlFilter isNothing d
       insertions = mlMapMaybe id  $ d `mlDifference` deletions
-  in insertions `mlUnion` ((toDiff old) `mlDifference` deletions)
+  in insertions `mlUnion` (toDiff old `mlDifference` deletions)
 {-# INLINABLE diffMaybeToDiff #-}
 
 alignDiffNoEq :: (Diffable f, Align (Diff f)) => f v -> f v -> Diff f (Maybe v)
@@ -196,7 +193,7 @@ alignMapLikeDiff :: (Diffable f, Align (Diff f), MapLike (Diff f), Eq v) => f v 
 alignMapLikeDiff old new = flip mlMapMaybe (align (toDiff old) (toDiff new)) $ \case
   This _ -> Just Nothing -- delete
   That x -> Just $ Just x -- add
-  These x y -> if x == y then Nothing else (Just $ Just y)
+  These x y -> if x == y then Nothing else Just $ Just y
 {-# INLINABLE alignMapLikeDiff #-}
 
 alignMapLikeDiffOnlyKeyChanges :: (Diffable f, Align (Diff f), MapLike (Diff f)) => f v -> f v -> Diff f (Maybe v)

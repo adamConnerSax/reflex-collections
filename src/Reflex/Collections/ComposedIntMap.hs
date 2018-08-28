@@ -1,17 +1,15 @@
-{-# LANGUAGE CPP                        #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE InstanceSigs               #-}
-{-# LANGUAGE KindSignatures             #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE CPP                   #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE InstanceSigs          #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeFamilies          #-}
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
 #endif
 -- | This module implements the `ComposedIntMap` and `ComposedPatchIntMap` classes, in order to have a version
--- of IntMap and PatchIntMap which have the same kind as Dmap.  More specificially
+-- of IntMap and PatchIntMap which have the same kind as DMap.  More specificially
 -- `DMap k :: (Type -> Type) -> Type`, that is `DMap k` and `ComposedIntMap a` both take a type constructor
 -- (a thing of kind `Type -> Type`) and produce a type.
 -- This allows us to reuse the same machinery for both types so we can have DMap-backed collections and IntMap-backed
@@ -20,12 +18,10 @@ module Reflex.Collections.ComposedIntMap
   (
     ComposedIntMap(..)
   , ComposedPatchIntMap(..)
-  , fromComposed
-  , toComposed
   ) where
 
 import qualified Reflex                 as R
-import           Reflex.Patch           (PatchDMap (..), PatchIntMap)
+import           Reflex.Patch           (PatchIntMap)
 
 import           Control.Monad.Identity (Identity (..))
 import           Data.Functor.Compose   (Compose (..), getCompose)

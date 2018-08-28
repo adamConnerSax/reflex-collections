@@ -3,15 +3,11 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE InstanceSigs               #-}
 {-# LANGUAGE KindSignatures             #-}
-{-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE RecursiveDo                #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE DefaultSignatures          #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE ConstraintKinds            #-}
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
 #endif
@@ -45,6 +41,7 @@ import           Data.Functor.Misc       (Const2 (..),ComposeMaybe(..), dmapToMa
 import           Data.Functor.Identity   (Identity(..), runIdentity)                 
 import           Data.Proxy              (Proxy (..))
 import           Data.Kind               (Type)
+import           Control.Arrow           (first)
 
 import           Data.Tree               (Tree)
 import           Data.Map (Map)
@@ -121,7 +118,7 @@ instance Ord k => ToPatchType (Map k) where
   withFunctorToSeqType = mapWithFunctorToDMap
   {-# INLINABLE makePatchSeq #-}
   makePatchSeq _ h =
-    PatchDMap . mapWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv))
+    PatchDMap . mapWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ fmap (h k) mv)
   {-# INLINABLE fromSeqType #-} 
   fromSeqType _ = dmapToMap
   {-# INLINABLE unsafeFromSeqType #-}
@@ -143,7 +140,7 @@ instance (Ord k, Eq k, Hashable k) => ToPatchType (HashMap k) where
   withFunctorToSeqType = keyedCollectionWithFunctorToDMap
   {-# INLINABLE makePatchSeq #-}  
   makePatchSeq _ h =
-    PatchDMap . keyedCollectionWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv))
+    PatchDMap . keyedCollectionWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ fmap (h k) mv)
   {-# INLINABLE fromSeqType #-}     
   fromSeqType _ = dmapToKeyedCollection
   {-# INLINABLE unsafeFromSeqType #-}  
@@ -165,7 +162,7 @@ instance ToPatchType Tree where
   withFunctorToSeqType = keyedCollectionWithFunctorToDMap
   {-# INLINABLE makePatchSeq #-}  
   makePatchSeq _ h =
-    PatchDMap . keyedCollectionWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ (fmap (h k) mv))
+    PatchDMap . keyedCollectionWithFunctorToDMap . mapWithKey (\k mv -> ComposeMaybe $ fmap (h k) mv)
   {-# INLINABLE fromSeqType #-}     
   fromSeqType _ = dmapToKeyedCollection
   {-# INLINABLE unsafeFromSeqType #-}  
@@ -212,7 +209,7 @@ instance ToPatchType [] where
   {-# INLINABLE fromSeqType #-}         
   fromSeqType _ = fmap runIdentity . getCompose . unCI
   {-# INLINABLE unsafeFromSeqType #-}      
-  unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy ([]))
+  unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy [])
   {-# INLINABLE makePatchSeq #-}      
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv))
@@ -223,21 +220,21 @@ instance ToPatchType [] where
   {-# INLINABLE diffToFanType #-}      
   diffToFanType _ = intMapToDMap . mlMapMaybe id
 
-instance SeqTypes (S.Seq) v where
-  type SeqType (S.Seq) v = ComposedIntMap v
-  type SeqPatchType (S.Seq) v = ComposedPatchIntMap v
+instance SeqTypes S.Seq v where
+  type SeqType S.Seq v = ComposedIntMap v
+  type SeqPatchType S.Seq v = ComposedPatchIntMap v
 
-instance ToPatchType (S.Seq) where
-  type FanKey (S.Seq) = Const2 Int
+instance ToPatchType S.Seq where
+  type FanKey S.Seq = Const2 Int
   {-# INLINABLE withFunctorToSeqType #-}        
   withFunctorToSeqType = ComposedIntMap . Compose . IM.fromAscList . zip [0..] . F.toList
   {-# INLINABLE fromSeqType #-}           
   fromSeqType _ = fmap runIdentity . getCompose . unCI
   {-# INLINABLE unsafeFromSeqType #-}        
-  unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy (S.Seq))
+  unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy S.Seq)
   {-# INLINABLE makePatchSeq #-}        
   makePatchSeq _ h =
-    ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv))
+    ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> fmap (h n) mv)
   {-# INLINABLE makeFanKey #-}              
   makeFanKey _ _ = Const2
   {-# INLINABLE doFan #-}        
@@ -301,11 +298,11 @@ dmapToKeyedCollection = fromKeyValueList . fmap (\(Const2 k :=> Identity v) -> (
 {-# INLINABLE dmapToKeyedCollection #-}
 
 intMapWithFunctorToDMap :: IntMap (g v) -> DMap (Const2 Int v) g
-intMapWithFunctorToDMap = DM.fromAscList . fmap (\(n, gv) -> (Const2 n) :=> gv) . IM.toAscList 
+intMapWithFunctorToDMap = DM.fromAscList . fmap (\(n, gv) -> Const2 n :=> gv) . IM.toAscList 
 {-# INLINABLE intMapWithFunctorToDMap #-}
 
 intMapToDMap :: IntMap v -> DMap (Const2 Int v) Identity
-intMapToDMap = DM.fromAscList . fmap (\(n, v) -> (Const2 n) :=> Identity v) . IM.toAscList 
+intMapToDMap = DM.fromAscList . fmap (\(n, v) -> Const2 n :=> Identity v) . IM.toAscList 
 {-# INLINABLE intMapToDMap #-}
 
 -- NB: This assumes the f :: Int -> Key function is order preserving, that is
@@ -317,7 +314,7 @@ intMapToDMapWithKey f = DM.fromAscList . fmap (\(n, v) -> Const2 (f n) :=> Ident
 -- generic to and from ComposedIntMap for Keyed collections
 -- can be optimized for collections that have to/from ascending lists
 keyedCollectionWithFunctorToComposedIntMap :: (Functor g, KeyedCollection f) => (Key f -> Int) -> f (g v) -> ComposedIntMap v g
-keyedCollectionWithFunctorToComposedIntMap toInt = ComposedIntMap . Compose . IM.fromList . fmap (\(k, gv) -> ( toInt k,  gv)) . toKeyValueList
+keyedCollectionWithFunctorToComposedIntMap toInt = ComposedIntMap . Compose . IM.fromList . fmap (first toInt) . toKeyValueList
 {-# INLINABLE keyedCollectionWithFunctorToComposedIntMap #-}
 
 keyedCollectionToComposedIntMap :: KeyedCollection f => (Key f -> Int) -> f v -> ComposedIntMap v Identity
@@ -325,5 +322,5 @@ keyedCollectionToComposedIntMap toInt = keyedCollectionWithFunctorToComposedIntM
 {-# INLINABLE keyedCollectionToComposedIntMap #-}
 
 composedIntMapToKeyedCollection :: KeyedCollection f => (Int -> Key f) -> ComposedIntMap v Identity -> f v
-composedIntMapToKeyedCollection toKey = fromKeyValueList . fmap (\(n, v) -> (toKey n, v)) . IM.toList . fmap runIdentity . getCompose . unCI
+composedIntMapToKeyedCollection toKey = fromKeyValueList . fmap (first toKey) . IM.toList . fmap runIdentity . getCompose . unCI
 {-# INLINABLE composedIntMapToKeyedCollection #-}

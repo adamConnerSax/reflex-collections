@@ -3,12 +3,10 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE InstanceSigs          #-}
 {-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE ViewPatterns          #-}
 {-# LANGUAGE PatternSynonyms  #-}
 {-# LANGUAGE DefaultSignatures #-}
 #ifdef USE_REFLEX_OPTIMIZER
@@ -20,10 +18,6 @@ module Reflex.Collections.KeyedCollection
   ) where
 
 import           Data.Kind             (Type)
-import           Data.Functor.Compose  (Compose (..))
-import           Data.Maybe            (maybe)
-import           Data.These            (These(..))
-import           Data.Align            (Align(..))
                                        
 import qualified Data.Map              as M
 import           Data.Hashable         (Hashable)
@@ -33,11 +27,9 @@ import qualified Data.Array            as A
 import qualified Data.Sequence         as S
 import           Data.Sequence         (ViewR(..))
 import qualified Data.Tree             as T
-import qualified Data.Foldable         as F
-import           Data.Witherable        (Filterable(..))
 import qualified Data.Key              as K
-import           Data.List            (groupBy, sortBy, sortOn)
-import           Data.Monoid          ((<>))
+import           Data.List            (groupBy, sortBy)
+import           Data.Monoid          ()
 
 class Functor f => KeyedCollection (f :: Type -> Type) where
   type Key f :: Type
@@ -69,16 +61,16 @@ arrayFromKeyValueList :: A.Ix k => [(k,v)] -> A.Array k v
 arrayFromKeyValueList l = let keys = fst <$> l in A.array (minimum keys, maximum keys) l
 {-# INLINABLE arrayFromKeyValueList #-}
   
-instance KeyedCollection ([]) where
-  type Key ([]) = Int
+instance KeyedCollection [] where
+  type Key [] = Int
   fromKeyValueList = fmap snd
 
-instance KeyedCollection (S.Seq) where
-  type Key (S.Seq) = Int
+instance KeyedCollection S.Seq where
+  type Key S.Seq = Int
   fromKeyValueList = S.fromList . fmap snd
 
-instance KeyedCollection (T.Tree) where
-  type Key (T.Tree) = S.Seq Int
+instance KeyedCollection T.Tree where
+  type Key T.Tree = S.Seq Int
   -- kvl can't be empty because the tree can't.
   -- removeTail is the sequence equivalent of inits
   -- sameTail checks if last element of the sequences is the same
@@ -91,7 +83,7 @@ instance KeyedCollection (T.Tree) where
     sameTail :: (S.Seq Int, a) -> (S.Seq Int, a) -> Bool
     sameTail (k1,_) (k2,_) = case S.viewr k1 of
       _ :> n  -> case S.viewr k2 of
-        _ :> m -> (n == m)
+        _ :> m -> n == m
         _        -> False
       EmptyR    -> case S.viewr k2 of
         EmptyR -> True
