@@ -32,6 +32,10 @@ import           Data.Semigroup         (Semigroup (..), stimesIdempotentMonoid)
 
 newtype ComposedIntMap a f = ComposedIntMap { unCI :: Compose IntMap f a }
 
+instance Monoid (ComposedIntMap a f) where
+  mempty = ComposedIntMap $ Compose mempty
+  mappend (ComposedIntMap a) (ComposedIntMap b) = ComposedIntMap . Compose $ mappend (getCompose a) (getCompose b)
+
 fromComposed :: Functor f => Compose f Identity a -> f a
 fromComposed = fmap runIdentity . getCompose
 
@@ -40,9 +44,9 @@ toComposed = Compose . fmap Identity
 
 newtype ComposedPatchIntMap a f = ComposedPatchIntMap { unCPI :: Compose PatchIntMap f a }
 
-instance Monoid (ComposedPatchIntMap a Identity) where
-  mempty = ComposedPatchIntMap . toComposed $ mempty
-  mappend (ComposedPatchIntMap a) (ComposedPatchIntMap b) = ComposedPatchIntMap . toComposed $ mappend (fromComposed a) (fromComposed b)
+instance Monoid (ComposedPatchIntMap a f) where
+  mempty = ComposedPatchIntMap $ Compose mempty
+  mappend (ComposedPatchIntMap a) (ComposedPatchIntMap b) = ComposedPatchIntMap . Compose $ mappend (getCompose a) (getCompose b)
 
 instance R.Patch (ComposedPatchIntMap a Identity) where
   type PatchTarget (ComposedPatchIntMap a Identity) = ComposedIntMap a Identity

@@ -8,6 +8,7 @@
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE ConstraintKinds            #-}
+{-# LANGUAGE DefaultSignatures          #-}
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
 #endif
@@ -45,12 +46,10 @@ import           Control.Arrow           (first)
 
 import           Data.Tree               (Tree)
 import           Data.Map (Map)
-import qualified Data.Map as M
 import           Data.IntMap (IntMap)
 import qualified Data.IntMap as IM
 import           Data.Hashable           (Hashable)
 import           Data.HashMap.Strict     (HashMap)
-import qualified Data.HashMap.Strict     as HM
 import           Data.Array (Array, Ix)
 import qualified Data.Array              as A
 import qualified Data.Sequence           as S
@@ -87,7 +86,12 @@ mergeOver fEv =
 class SeqTypes (f :: Type -> Type) (v :: Type) where
   type SeqType f v  :: (Type -> Type) -> Type
   type SeqPatchType f v :: (Type -> Type) -> Type
+  emptySeq :: Proxy f -> Proxy v -> Proxy g -> SeqType f v g
+  default emptySeq :: (Monoid (SeqType f v g)) => Proxy f -> Proxy v -> Proxy g -> SeqType f v g
+  emptySeq _ _ _ = mempty
+  nullSeq :: Proxy f -> Proxy v -> Proxy g -> SeqType f v g -> Bool
 
+  
 -- This class has the capabilities to translate f v and its difftype into types
 -- that are sequenceable, and then bring the original type back
 -- This requires that the Diff type be mapped to the correct type for diffing at the sequenceable level (e.g., as a DMap).
@@ -96,10 +100,10 @@ class SeqTypes (f :: Type -> Type) (v :: Type) where
 
 class (KeyedCollection f, Diffable f) => ToPatchType (f :: Type -> Type) where
   type FanKey f :: Type -> Type -> Type -- NB: This is a key for a DMap since fan uses DMap
-  withFunctorToSeqType :: SeqTypes f v => Functor g => f (g v) -> SeqType f v g
-  fromSeqType :: SeqTypes f a => Proxy f -> SeqType f a Identity -> Diff f a
-  unsafeFromSeqType :: SeqTypes f a => SeqType f a Identity -> f a -- may fail for some types if keys are missing
-  makePatchSeq :: (Functor g, SeqTypes f u) => Proxy f -> (Key f -> v -> g u) -> Diff f (Maybe v) -> SeqPatchType f u g
+  withFunctorToSeqType :: (SeqTypes f v , Functor g) => f (g v) -> SeqType f v g
+  fromSeqType :: Proxy f -> SeqType f a Identity -> Diff f a
+  unsafeFromSeqType :: SeqType f a Identity -> f a -- may fail for some types if keys are missing
+  makePatchSeq :: Functor g => Proxy f -> (Key f -> v -> g u) -> Diff f (Maybe v) -> SeqPatchType f u g
   makeFanKey :: Proxy f -> Proxy v -> Key f -> FanKey f v v
   doFan :: (R.Reflex t, DM.GCompare (FanKey f v))=> R.Event t (f v) -> R.EventSelector t (FanKey f v)
   diffToFanType :: Proxy f -> Diff f (Maybe v) -> DMap (FanKey f v) Identity 
@@ -108,9 +112,10 @@ class (KeyedCollection f, Diffable f) => ToPatchType (f :: Type -> Type) where
   
 -- Map, HashMap and Tree use DMap for merging and sequencing
 
-instance SeqTypes (Map k) v where
+instance Ord k => SeqTypes (Map k) v where
   type SeqType (Map k) v = DMap (Const2 k v)
   type SeqPatchType (Map k) v = PatchDMap (Const2 k v)
+  nullSeq _ _ _ = DM.null
 
 instance Ord k => ToPatchType (Map k) where
   type FanKey (Map k) = Const2 k
@@ -130,9 +135,10 @@ instance Ord k => ToPatchType (Map k) where
   {-# INLINABLE diffToFanType #-}
   diffToFanType _ = keyedCollectionToDMap . mlMapMaybe id
 
-instance SeqTypes (HashMap k) v where
+instance Ord k => SeqTypes (HashMap k) v where
   type SeqType (HashMap k) v = DMap (Const2 k v)
   type SeqPatchType (HashMap k) v = PatchDMap (Const2 k v)
+  nullSeq _ _ _ = DM.null
 
 instance (Ord k, Eq k, Hashable k) => ToPatchType (HashMap k) where
   type FanKey (HashMap k) = Const2 k
@@ -155,6 +161,7 @@ instance (Ord k, Eq k, Hashable k) => ToPatchType (HashMap k) where
 instance SeqTypes Tree v where
   type SeqType Tree v = DMap (Const2 (S.Seq Int) v)
   type SeqPatchType Tree v = PatchDMap (Const2 (S.Seq Int) v)
+  nullSeq _ _ _ = DM.null
 
 instance ToPatchType Tree where
   type FanKey Tree = Const2 (S.Seq Int)
@@ -179,7 +186,8 @@ instance ToPatchType Tree where
 instance SeqTypes IntMap v where
   type SeqType IntMap v = ComposedIntMap v
   type SeqPatchType IntMap v = ComposedPatchIntMap v
-
+  nullSeq _ _ _ (ComposedIntMap cim) = IM.null $ getCompose cim
+    
 instance ToPatchType IntMap where
   type FanKey IntMap = Const2 Int
   {-# INLINABLE withFunctorToSeqType #-}    
@@ -201,6 +209,7 @@ instance ToPatchType IntMap where
 instance SeqTypes [] v where
   type SeqType [] v = ComposedIntMap v
   type SeqPatchType [] v = ComposedPatchIntMap v
+  nullSeq _ _ _ (ComposedIntMap cim) = IM.null $ getCompose cim
 
 instance ToPatchType [] where
   type FanKey [] = Const2 Int
@@ -223,6 +232,7 @@ instance ToPatchType [] where
 instance SeqTypes S.Seq v where
   type SeqType S.Seq v = ComposedIntMap v
   type SeqPatchType S.Seq v = ComposedPatchIntMap v
+  nullSeq _ _ _ (ComposedIntMap cim) = IM.null $ getCompose cim
 
 instance ToPatchType S.Seq where
   type FanKey S.Seq = Const2 Int
@@ -250,6 +260,7 @@ instance ToPatchType S.Seq where
 instance SeqTypes (Array k) v where
   type SeqType (Array k) v = ComposedIntMap v
   type SeqPatchType (Array k) v = ComposedPatchIntMap v
+  nullSeq _ _ _ (ComposedIntMap cim) = IM.null $ getCompose cim
 
 instance (Enum k, Bounded k, Ix k) => ToPatchType (Array k) where
   type FanKey (Array k) = Const2 k

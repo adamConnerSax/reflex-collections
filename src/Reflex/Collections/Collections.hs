@@ -75,7 +75,7 @@ import           Reflex.Collections.ToPatchType     (SeqTypes (..),
 
 import qualified Reflex                             as R
 
-import           Control.Monad                      (void)
+import           Control.Monad                      (join, void)
 import           Control.Monad.Fix                  (MonadFix)
 import           Data.Dependent.Map                 (GCompare)
 import           Data.Foldable                      (Foldable, toList)
@@ -114,6 +114,16 @@ listHoldWithKey c0 c' h = do
   fmap unsafeFromSeqType <$> patchPairToDynamic a0 a'
 {-# INLINABLE listHoldWithKey #-}
 
+{-
+listHoldWithKeyDyn ::  forall t m f v a. ( R.Adjustable t m
+                                     , R.MonadHold t m
+                                     , PatchSeqC f a)
+  => R.Dynamic t (f v) -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> m a) -> m (R.Dynamic t (f a))
+listHoldWithKeyDyn c0Dyn c' h = R.buildDynamic (R.sample $ current c0Dyn) evs where
+  diffEv = R.leftmost [c', fmap diff
+  lh = listHoldWithKey (sample $ current c0) c' h
+-}
+
 -- | listWithKey handles the case where your input collection is dynamic.  In this case your widget has to handle dynamic inputs.
 -- and thus the widget can update without rebuilding when the input value changes.
 listWithKey :: ( R.Adjustable t m
@@ -143,6 +153,32 @@ listWithKey' toInitialPlusKeyDiffEvent vals mkChild = do
   listHoldWithKey fv0 edfv $ \k v ->
     mkChild k =<< R.holdDyn v (R.select childValChangedSelector $ makeFanKey' k)
 {-# INLINABLE listWithKey' #-}
+
+{-
+listWithKey'' :: forall t m f v a. ( R.Adjustable t m
+                                   , R.PostBuild t m
+                                   , R.MonadHold t m
+                                   , MonadFix m
+                                   , PatchSeqC f a
+                                   , Monoid (f v)
+                                   , GCompare (FanKey f v))
+  => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
+listWithKey'' vals mkChild = mdo
+  postBuild <- R.getPostBuild
+  let doFan' = doFan
+      makeFanKey' = makeFanKey (Proxy :: Proxy f) (Proxy :: Proxy v)
+      emptyContainer' = mempty
+      childValChangedSelector = doFan' $ R.updated vals
+--  sentVals :: R.Dynamic t (f v) <- R.foldDyn applyDiff emptyContainer' changeVals
+  sentVals2 <- R.buildDynamic (R.sample $ R.current vals) (R.attachWith (flip applyDiff) (R.current vals) changeVals)
+  let changeVals :: R.Event t (Diff f (Maybe v))
+      changeVals = R.attachWith diffOnlyKeyChanges (R.current sentVals2) $ R.updated vals
+      widget k v = mkChild k =<< R.holdDyn v (R.select childValChangedSelector $ makeFanKey' k)
+      lhwk = (R.sample $ R.current vals) >>= \x -> listHoldWithKey x changeVals widget
+  join $ R.buildDynamic (join . R.sample . R.current <$> lhwk) <$> (R.updated <$> lhwk)
+--  listHoldWithKey emptyContainer' changeVals widget
+-}
+
 
 -- | Create a dynamically-changing set of Event-valued widgets. In this case, ones that are indifferent to position
 list :: ( R.Adjustable t m

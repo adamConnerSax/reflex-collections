@@ -36,6 +36,7 @@ library
                   Reflex.Collections.KeyedCollection
                   Reflex.Collections.ToPatchType
                   Reflex.Collections.Diffable
+                  Reflex.Collections.WithEmpty
   other-modules:
 
   if flag(wkwebview) || flag(warp)
@@ -46,6 +47,7 @@ library
   build-depends:       base >= 4.7 && < 5
                      , dependent-map
                      , array
+                     , constraints
                      , reflex
                      , lens
                      , keys

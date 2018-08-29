@@ -48,6 +48,7 @@ import           Data.Tree              (Tree)
 
 class Functor f => MapLike f where
   mlEmpty :: f a
+  mlNull :: f a -> Bool
   mlUnion :: f a -> f a -> f a -- left preferring union
   mlDifference :: f a -> f b -> f a -- remove from left any element whose key appears in right
   mlFilter :: (a -> Bool) -> f a -> f a
@@ -57,6 +58,8 @@ class Functor f => MapLike f where
 instance Ord k => MapLike (M.Map k) where
   {-# INLINABLE mlEmpty #-}
   mlEmpty = M.empty
+  {-# INLINABLE mlNull #-}
+  mlNull = M.null
   {-# INLINABLE mlUnion #-}
   mlUnion = M.union
   {-# INLINABLE mlDifference #-}
@@ -71,6 +74,8 @@ instance Ord k => MapLike (M.Map k) where
 instance (Eq k, Hashable k) => MapLike (HM.HashMap k) where
   {-# INLINABLE mlEmpty #-}
   mlEmpty = HM.empty
+  {-# INLINABLE mlNull #-}
+  mlNull = HM.null
   {-# INLINABLE mlUnion #-}
   mlUnion = HM.union
   {-# INLINABLE mlDifference #-}    
@@ -85,6 +90,8 @@ instance (Eq k, Hashable k) => MapLike (HM.HashMap k) where
 instance MapLike IntMap where
   {-# INLINABLE mlEmpty #-}  
   mlEmpty = IM.empty
+  {-# INLINABLE mlNull #-}
+  mlNull = IM.null
   {-# INLINABLE mlUnion #-}  
   mlUnion = IM.union
   {-# INLINABLE mlDifference #-}      
@@ -140,12 +147,10 @@ instance (Eq k, Hashable k) => Diffable (HashMap k) where
   toDiff = id
   fromFullDiff = id
 
-
 instance Diffable IntMap where
   type Diff IntMap = IntMap
   toDiff = id
   fromFullDiff = id
-
 
 instance Diffable [] where
   type Diff [] = IntMap
