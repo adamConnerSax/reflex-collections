@@ -59,7 +59,6 @@ library
                      , safe
                      , semigroups
                      , unordered-containers >= 0.2.8.0
-                     , witherable >= 0.2
   if impl(ghcjs)
     build-depends:     ghcjs-base
 
