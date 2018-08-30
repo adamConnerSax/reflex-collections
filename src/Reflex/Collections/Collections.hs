@@ -145,23 +145,6 @@ listWithKeyMaybe :: ( R.Adjustable t m
 listWithKeyMaybe fDyn widget = fmap withEmptyToMaybe <$> listWithKeyGeneral Empty (NonEmpty <$> fDyn) widget
 {-# INLINABLE listWithKeyMaybe #-}
 
-{-
-listWithKeyMaybeDyn ::  ( R.Adjustable t m
-                        , R.PostBuild t m
-                        , MonadFix m
-                        , R.MonadHold t m
-                        , Patchable (WithEmpty f) a  -- for the listHold
-                        , Patchable f (R.Dynamic t (g a))
-                        , Distributable f (g a)
-                        , ToPatchType f
-                        , Functor (Diff f)
-                        , MapLike (Diff f)
-                        , GCompare (FanKey f v))
-  => (v -> g a) -> R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Dynamic t (g a))) -> m (R.Dynamic t (f (g a)))
-listWithKeyMaybeDyn toGA fDyn widget = listWithKeyMaybe fDyn widget >>= maybeHelper toGA fDyn
-{-# INLINABLE listWithKeyMaybeDyn #-}
--}
-
 listWithKeyGeneral :: forall t m f v a. ( R.Adjustable t m
                                         , R.PostBuild t m
                                         , R.MonadHold t m
@@ -209,19 +192,7 @@ listMaybe :: ( R.Adjustable t m
   => R.Dynamic t (f v) -> (R.Dynamic t v -> m a) -> m (R.Dynamic t (Maybe (f a)))
 listMaybe fDyn widget = fmap withEmptyToMaybe <$> listGeneral Empty (NonEmpty <$> fDyn) widget
 {-# INLINABLE listMaybe #-}
-{-
-listMaybeDyn :: ( R.Adjustable t m
-                , R.PostBuild t m
-                , MonadFix m
-                , R.MonadHold t m
-                , Patchable (WithEmpty f) a  -- for the listHold
-                , Patchable f (R.Dynamic t (g a))
-                , Distributable f (g a)
-                , Functor (Diff f)
-                , GCompare (FanKey f v))
-  => (v -> g a) -> R.Dynamic t (f v) -> (R.Dynamic t v -> m (R.Dynamic t (g a))) -> m (R.Dynamic t (f (g a)))
-listMaybeDyn toGA fDyn widget = listMaybe fDyn widget >>= maybeHelper toGA fDyn
--}
+
 -- | Create a dynamically-changing set of Event-valued widgets. In this case, ones that are indifferent to position
 listGeneral :: ( R.Adjustable t m
                , R.PostBuild t m
