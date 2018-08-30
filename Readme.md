@@ -3,7 +3,7 @@ reflex-collections
 A re-implementation of the collection functions from Reflex.  
 
 This library reimplements `listHoldWithKey`, `listWithKey`, `list`, `listViewWithKey`, and `selectViewListWithKey` using some typeclass and associated type-family machinery to make these functions
-more polymorphic.  The originals operate only on `Ord k => Data.Map.Map k` these will operate on `Ord k => Map k`, `IntMap`, `(Hashable k, Ord k) => HashMap k`, `[]`, `Data.Sequence.Seq`, and, for only `listHoldWithKey`, will also 
+more polymorphic. In addition, it implements versions which have a maybe in the return type to facilitiate use with collections that have no empty state (e.g. Tree or Array). The originals operate only on `Ord k => Data.Map.Map k` these will operate on `Ord k => Map k`, `IntMap`, `(Hashable k, Ord k) => HashMap k`, `[]`, `Data.Sequence.Seq`, and, for `listHoldWithKey`, `listWithKeyShallowDiff` and the "maybe" versions of the rest, will also 
 work on `Tree` (a rose tree from `Data.Tree`) and `(Enum k, Bounded k, Ix k) => Data.Array k`, a sort of "Total Map", holding a value for every `k`.  It should also be straightforward to add class instances for other collections so these functions will work on them directly.
 
 Along the way, we get more polymorphic versions of `Reflex.mergeMap` (`Reflex.Collections.Collections.mergeOver`) and `distributeMapOverDynPure` (`Reflex.Collections.Collections.distributeOverDynPure`).  `mergeOver` returns `Event t (Diff f a)` rather than `Event t (f a)` since events will only fire on subsets and subsets don't make sense for all containers, though they do for all diffs. For the various map-like types (`Map`, `HashMap`, `IntMap`), the diffs are the same type as the collection itself so this change is invisible.
@@ -25,9 +25,8 @@ To add a new collection type, you need instances of these second three (`KeyedCo
 There's a quickcheck test setup for checking that your classes are lawful (e.g., that a KeyedCollection to and from key/value lists is isomorphic, that `applyDiff (diff a b) a = b`, etc.).  So if you add a type, you can add tests to check that you are implementing things correctly.  
 
 Notes:
-1.  If we could build a Dynamic starting from the current value of another Dynamic but without the perils of sample, we could get rid of the Monoid constraint. This would be useful for Array and Tree which cannot be empty.
-Which would also allow containers which are "total," that is have values for all keys, to be used for more than `listHoldWithKey`. 
-2. I've changed the interface for listViewWithKey slightly, returning `R.Event t (Diff f v)` instead of `R.Event t (f v)`.  For a total container, one with items for all keys, the original version doesn't make sense.  Our events will be for subsets of the keys.  
+1.  If we could build a Dynamic starting from the current value of another Dynamic but without the perils of sample, we could get rid of the Monoid constraint. This would be useful for Array and Tree which cannot be empty.  We get around this for now by using the "WithEmpty" type (which is isomorphic to Maybe but is higher-kinded, that is `WithEmpty f a` is isomorphic to `Maybe (f a)`, and having special versions of the collection functions which return `Dynamic t (Maybe (f a))` rather than `Dynamic t (f a)` for types with no natural empty state.  We also have a combinator for simplifying the frequent case where the widget returns `m (Dynamic t (g a))`, yielding a `Dynamic t (Maybe (f (Dynamic t a)))` result which can be "flattened" to `Dynamic t (Maybe (f a))` in most cases. 
+2. I've changed the interface for listViewWithKey slightly, returning `R.Event t (Diff f v)` instead of `R.Event t (f v)`.  For a total container, one with items for all keys, the original version doesn't make sense.  Our events will be for subsets of the keys. This doesn't change anything for `Map k` since `Map k` is its own diff type.
 ----
 
 Building:

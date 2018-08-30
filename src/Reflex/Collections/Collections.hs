@@ -59,6 +59,7 @@ module Reflex.Collections.Collections
   , listWithKeyShallowDiff
   , selectViewListWithKey
   , selectViewListWithKeyMaybe
+  , simplifyDynMaybe
   , maybeHelper
   , mergeOver
   , distributeOverDynPure
@@ -73,8 +74,7 @@ import           Reflex.Collections.KeyedCollection (KeyedCollection (..))
 import           Reflex.Collections.Sequenceable    (PatchSequenceable (..),
                                                      ReflexMergeable (..))
 import           Reflex.Collections.ToPatchType     (Distributable, Mergeable,
-                                                     SeqTypes (..),
-                                                     Sequenceable,
+                                                     Patchable, SeqTypes (..),
                                                      ToPatchType (..),
                                                      distributeOverDynPure,
                                                      functorMappedToSeqType,
@@ -100,17 +100,15 @@ import           Data.Sequence                      (Seq)
 import           Data.Tree                          (Tree)
 
 -- If we only want to support ghc8+, we could replace proxies with type application.
-
--- NB: This also implies Diffable f (and thus KeyedCollection f, KeyedCollection (Diff f)) since Diffable is a superclasses of ToPatchType
---type PatchSeqC f a = (SeqTypes f a, PatchSequenceable (SeqType f a) (SeqPatchType f a), ToPatchType f)
-
+-- Quantified constraints would simplify some signatures here, since we often want (forall a. Patchable f a).  But that'll be a while.
+-- we could use Data.Constraint to do it, but that's messy as well since we'd need to unwrap the dictionaries at the call site.
 
 -- | listHoldWithKey is an efficient collection management function when your input is a *static* initial state and an event stream of updates.
 -- This version uses a widget that expects a static input and thus the widget will need to be rebuilt if the incoming
 -- event changes the value of v for a given k.  What this function does provide is efficient routing of each event to the specific
 -- widget that has changed, thus rebuilding only the widgets that have changing inputs.
 -- NB: use of unsafeFromSeqType is okay here.  We are updating an initial container which has values for all keys if required.
-listHoldWithKey :: forall t m f v a. (R.Adjustable t m, R.MonadHold t m, Sequenceable f a)
+listHoldWithKey :: forall t m f v a. (R.Adjustable t m, R.MonadHold t m, Patchable f a)
   => f v -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> m a) -> m (R.Dynamic t (f a))
 listHoldWithKey c0 c' h = do
   let pf = Proxy :: Proxy f
@@ -127,7 +125,7 @@ listWithKey :: ( R.Adjustable t m
                , R.PostBuild t m
                , MonadFix m
                , R.MonadHold t m
-               , Sequenceable f a  -- for the listHold
+               , Patchable f a  -- for the listHold
                , Monoid (f v)
                , Functor (Diff f)
                , GCompare (FanKey f v))
@@ -139,7 +137,7 @@ listWithKeyMaybe :: ( R.Adjustable t m
                     , R.PostBuild t m
                     , MonadFix m
                     , R.MonadHold t m
-                    , Sequenceable (WithEmpty f) a  -- for the listHold
+                    , Patchable (WithEmpty f) a  -- for the listHold
                     , Functor (Diff f)
                     , MapLike (Diff f)
                     , GCompare (FanKey f v))
@@ -152,21 +150,23 @@ listWithKeyMaybeDyn ::  ( R.Adjustable t m
                         , R.PostBuild t m
                         , MonadFix m
                         , R.MonadHold t m
-                        , Sequenceable (WithEmpty f) a  -- for the listHold
+                        , Patchable (WithEmpty f) a  -- for the listHold
+                        , Patchable f (R.Dynamic t (g a))
+                        , Distributable f (g a)
                         , ToPatchType f
                         , Functor (Diff f)
                         , MapLike (Diff f)
                         , GCompare (FanKey f v))
   => (v -> g a) -> R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Dynamic t (g a))) -> m (R.Dynamic t (f (g a)))
 listWithKeyMaybeDyn toGA fDyn widget = listWithKeyMaybe fDyn widget >>= maybeHelper toGA fDyn
+{-# INLINABLE listWithKeyMaybeDyn #-}
 -}
-
 
 listWithKeyGeneral :: forall t m f v a. ( R.Adjustable t m
                                         , R.PostBuild t m
                                         , R.MonadHold t m
                                         , MonadFix m
-                                        , Sequenceable f a
+                                        , Patchable f a
                                         , GCompare (FanKey f v))
   => f v -- an empty (f v)
   -> R.Dynamic t (f v)
@@ -187,12 +187,11 @@ listWithKeyGeneral emptyFV vals mkChild = do
     mkChild k =<< R.holdDyn v (R.select childValChangedSelector $ makeFanKey' k)
 {-# INLINABLE listWithKeyGeneral #-}
 
-
 list :: ( R.Adjustable t m
         , R.PostBuild t m
         , MonadFix m
         , R.MonadHold t m
-        , Sequenceable f a  -- for the listHold
+        , Patchable f a  -- for the listHold
         , Functor (Diff f)
         , Monoid (f v)
         , GCompare (FanKey f v))
@@ -204,19 +203,31 @@ listMaybe :: ( R.Adjustable t m
              , R.PostBuild t m
              , MonadFix m
              , R.MonadHold t m
-             , Sequenceable (WithEmpty f) a  -- for the listHold
+             , Patchable (WithEmpty f) a  -- for the listHold
              , Functor (Diff f)
              , GCompare (FanKey f v))
   => R.Dynamic t (f v) -> (R.Dynamic t v -> m a) -> m (R.Dynamic t (Maybe (f a)))
 listMaybe fDyn widget = fmap withEmptyToMaybe <$> listGeneral Empty (NonEmpty <$> fDyn) widget
 {-# INLINABLE listMaybe #-}
-
+{-
+listMaybeDyn :: ( R.Adjustable t m
+                , R.PostBuild t m
+                , MonadFix m
+                , R.MonadHold t m
+                , Patchable (WithEmpty f) a  -- for the listHold
+                , Patchable f (R.Dynamic t (g a))
+                , Distributable f (g a)
+                , Functor (Diff f)
+                , GCompare (FanKey f v))
+  => (v -> g a) -> R.Dynamic t (f v) -> (R.Dynamic t v -> m (R.Dynamic t (g a))) -> m (R.Dynamic t (f (g a)))
+listMaybeDyn toGA fDyn widget = listMaybe fDyn widget >>= maybeHelper toGA fDyn
+-}
 -- | Create a dynamically-changing set of Event-valued widgets. In this case, ones that are indifferent to position
 listGeneral :: ( R.Adjustable t m
                , R.PostBuild t m
                , MonadFix m
                , R.MonadHold t m
-               , Sequenceable f a  -- for the listHold
+               , Patchable f a  -- for the listHold
                , Functor (Diff f)
                , GCompare (FanKey f v))
   => f v -- must be empty
@@ -232,7 +243,7 @@ listViewWithKey ::  ( R.Adjustable t m
                     , R.MonadHold t m
                     , MonadFix m
                     , Mergeable f a
-                    , Sequenceable f (R.Event t a)
+                    , Patchable f (R.Event t a)
                     , Monoid (f v)
                     , GCompare (FanKey f v))
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
@@ -243,8 +254,8 @@ listViewWithKeyMaybe ::  ( R.Adjustable t m
                          , R.PostBuild t m
                          , R.MonadHold t m
                          , MonadFix m
-                         , Sequenceable (WithEmpty f) a
-                         , Sequenceable f (R.Event t a)
+                         , Patchable (WithEmpty f) a
+                         , Patchable f (R.Event t a)
                          , ReflexMergeable (SeqType f a)
                          , GCompare (FanKey f v))
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
@@ -258,7 +269,7 @@ listViewWithKeyGeneral ::  ( R.Adjustable t m
                            , R.MonadHold t m
                            , MonadFix m
                            , Mergeable f a
-                           , Sequenceable f (R.Event t a)
+                           , Patchable f (R.Event t a)
                            , GCompare (FanKey f v))
   => f v -- must be empty
   -> R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
@@ -274,7 +285,7 @@ listViewWithKeyGeneral emptyFV vals mkChild =
 listWithKeyShallowDiff :: forall t m f v a.( R.Adjustable t m
                                            , MonadFix m
                                            , R.MonadHold t m
-                                           , Sequenceable f a -- for the listHold
+                                           , Patchable f a -- for the listHold
                                            , Functor (Diff f)
                                            , GCompare (FanKey f v))
   => f v -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> R.Event t v -> m a) -> m (R.Dynamic t (f a))
@@ -297,8 +308,8 @@ selectViewListWithKey :: ( R.Adjustable t m
                                 , R.MonadHold t m
                                 , R.PostBuild t m
                                 , Foldable f -- for toList
-                                , Sequenceable f a -- for the listHold
-                                , Sequenceable f (R.Event t (Key f, a)) -- for the listHold
+                                , Patchable f a -- for the listHold
+                                , Patchable f (R.Event t (Key f, a)) -- for the listHold
                                 , Functor (Diff f)
                                 , Monoid (f v)
                                 , GCompare (FanKey f v)
@@ -314,8 +325,8 @@ selectViewListWithKeyMaybe :: ( R.Adjustable t m
                               , R.MonadHold t m
                               , R.PostBuild t m
                               , Foldable f -- for toList
-                              , Sequenceable (WithEmpty f) a -- for the listHold
-                              , Sequenceable f (R.Event t (Key f, a)) -- for the listHold
+                              , Patchable (WithEmpty f) a -- for the listHold
+                              , Patchable f (R.Event t (Key f, a)) -- for the listHold
                               , Functor (Diff f)
                               , MapLike (Diff f)
                               , Monoid (f v)
@@ -332,8 +343,8 @@ selectViewListWithKeyGeneral :: ( R.Adjustable t m
                                 , R.MonadHold t m
                                 , R.PostBuild t m
                                 , Foldable f -- for toList
-                                , Sequenceable f a -- for the listHold
-                                , Sequenceable f (R.Event t (Key f, a)) -- for the listHold
+                                , Patchable f a -- for the listHold
+                                , Patchable f (R.Event t (Key f, a)) -- for the listHold
                                 , Functor (Diff f)
                                 , GCompare (FanKey f v)
                                 , Ord (Key f))
@@ -352,6 +363,15 @@ selectViewListWithKeyGeneral emptyFV selection vals mkChild = do
 {-# INLINABLE selectViewListWithKey #-}
 
 -- for the case when the widget function produces a (Dynamic t (g a)) and we are using the Maybe variant of these functions
+-- I would like to include the widget here so that the types show that the widget must return m (Dynamic t (g a)) but I can't get that to
+-- compile
+simplifyDynMaybe :: (R.Reflex t, R.MonadHold t m, Distributable f (g a))
+  => (v -> g a)
+  -> (R.Dynamic t (f v) -> m (R.Dynamic t (Maybe (f (R.Dynamic t (g a))))))
+  -> R.Dynamic t (f v)
+  -> m (R.Dynamic t (f (g a)))
+simplifyDynMaybe toGA collectionF fDyn = collectionF fDyn  >>= maybeHelper toGA fDyn
+
 maybeHelper :: forall t m f g v a. (R.Reflex t, R.MonadHold t m, Distributable f (g a))
   => (v -> g a) -> R.Dynamic t (f v) -> R.Dynamic t (Maybe (f (R.Dynamic t (g a)))) -> m (R.Dynamic t (f (g a)))
 maybeHelper toGA fDyn dynResult = do

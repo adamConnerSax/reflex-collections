@@ -151,6 +151,7 @@ executable test-codecompare
 Test-Suite hspec
   type: exitcode-stdio-1.0
   main-is: test/Main.hs
+  ghc-options:  -threaded -Wall -fwarn-tabs -funbox-strict-fields -rtsopts -with-rtsopts=-N -O2
   build-depends: base
                , array
                , reflex-collections

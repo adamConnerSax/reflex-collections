@@ -16,7 +16,7 @@ module Reflex.Collections.ToPatchType
   (
     ToPatchType(..)
   , SeqTypes(..)
-  , Sequenceable
+  , Patchable
   , functorMappedToSeqType
   , Distributable
   , distributeOverDynPure
@@ -60,9 +60,9 @@ import qualified Data.Foldable           as F
 
 
 -- some constraint helpers to simplify sigs
-type Sequenceable f v = (ToPatchType f, SeqTypes f v, PatchSequenceable (SeqType f v) (SeqPatchType f v))
-type Distributable f v = (Sequenceable f v, ReflexSequenceable (SeqType f v))
-type Mergeable f v = (Sequenceable f v, ReflexMergeable (SeqType f v))
+type Patchable f v = (ToPatchType f, SeqTypes f v, PatchSequenceable (SeqType f v) (SeqPatchType f v))
+type Distributable f v = (Patchable f v, ReflexSequenceable (SeqType f v))
+type Mergeable f v = (Patchable f v, ReflexMergeable (SeqType f v))
 
 -- | Generalize distributeMapOverDynPure
 -- NB: Use of "unsafeFromSeqType" is okay here since we know there is a value for every key in the input
@@ -71,7 +71,6 @@ distributeOverDynPure = fmap unsafeFromSeqType . sequenceDynamic . withFunctorTo
 {-# INLINABLE distributeOverDynPure #-}
 
 -- | Generalizes "mergeMap" to anything with ToPatchType where the Patches are Sequenceable.
-
 mergeOver :: forall t f v. (R.Reflex t, Mergeable f v) => f (R.Event t v) -> R.Event t (Diff f v)
 mergeOver fEv =
   let id2 = const id :: (k -> R.Event t v -> R.Event t v)

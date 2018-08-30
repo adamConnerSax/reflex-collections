@@ -84,10 +84,16 @@ testWidget = mainWidget $ do
   _ <- buildLBEMapLWK (addFixedKeyToWidget id (FWDyn $ readOnlyFieldWidget)) res6
 
   bigBreak
-  el "p" $ text "Simple editor for a total array (an array indexed by a bounded enum with all values present"
+  el "p" $ text "Simple editor for a total array (an array indexed by a bounded enum with all values present)"
+  el "p" $ text "This also demonstrates the use of the listXXXMaybe style functions for collections without"
+  el "p" $ text "a natural empty state.  It also uses a helpful combinator to simplify the result."
   totalArrayRes <- totalArrayBuildLBELWK arrayWidget $ constDyn a0
   dynText $ fmap (T.pack . show) totalArrayRes
 
+  arrayDyn <- holdDyn a0 (fmapMaybe id $ updated totalArrayRes)
+  el "p" $ text "Now feed the output of that into another to test true dynamic input."
+  totalArrayRes2 <- totalArrayBuildLBELWK arrayWidget arrayDyn
+  dynText $ fmap (T.pack . show) totalArrayRes2
   return ()
 
 
@@ -117,7 +123,7 @@ totalArrayBuildLBELWK :: forall t m k v. ( Enum k
                       => FieldWidgetWithKey t m k v -> ArrayEditF t m k v
 totalArrayBuildLBELWK editOneValueWK totalArrayDyn0 = do
   let editW k vDyn =  el "br" blank >> fieldWidgetDyn (editOneValueWK k) (Just vDyn)
-  arrayMaybeDyn <- RC.listWithKeyMaybe totalArrayDyn0 editW >>= RC.maybeHelper Just totalArrayDyn0 -- Dynamic t (A.Array k (Maybe v))
+  arrayMaybeDyn <- RC.simplifyDynMaybe Just (flip RC.listWithKeyMaybe editW) totalArrayDyn0
   return $ fmap sequence arrayMaybeDyn
 
 -- NB: ListViewWithKey returns an Event t (M.Map k v) but it contains only the keys for which things have changed

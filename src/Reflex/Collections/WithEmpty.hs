@@ -33,6 +33,10 @@ instance Foldable f => Foldable (WithEmpty f) where
   foldMap _ Empty = mempty
   foldMap f (NonEmpty x) = foldMap f x
 
+instance Show (f a) => Show (WithEmpty f a) where
+  show Empty = "Empty"
+  show (NonEmpty x) = "NonEmpty (" ++ show x ++ ")"
+
 withEmptyToMaybe :: WithEmpty f a -> Maybe (f a)
 withEmptyToMaybe Empty = Nothing
 withEmptyToMaybe (NonEmpty x) = Just x
