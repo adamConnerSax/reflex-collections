@@ -59,6 +59,7 @@ module Reflex.Collections.Collections
   , listWithKeyShallowDiff
   , selectViewListWithKey
   , selectViewListWithKeyMaybe
+  , maybeHelper
   , mergeOver
   , distributeOverDynPure
   ) where
@@ -103,13 +104,6 @@ import           Data.Tree                          (Tree)
 -- NB: This also implies Diffable f (and thus KeyedCollection f, KeyedCollection (Diff f)) since Diffable is a superclasses of ToPatchType
 --type PatchSeqC f a = (SeqTypes f a, PatchSequenceable (SeqType f a) (SeqPatchType f a), ToPatchType f)
 
--- for the case when the widget function produces a (Dynamic t (g a)) and we are using the Maybe variant of these functions
-maybeHelper :: forall t m f g v a. (R.Reflex t, R.MonadHold t m, Distributable f (g a))
-  => (v -> g a) -> R.Dynamic t (f v) -> R.Dynamic t (Maybe (f (R.Dynamic t (g a)))) -> m (R.Dynamic t (f (g a)))
-maybeHelper toGA fDyn dynResult = do
-  let y :: R.Dynamic t (Maybe (R.Dynamic t (f (g a)))) = fmap distributeOverDynPure <$> dynResult
-      newFGEv :: R.Event t (R.Dynamic t (f (g a))) = R.fmapMaybe id (R.updated y)
-  fmap join $ R.holdDyn (fmap toGA <$> fDyn) newFGEv
 
 -- | listHoldWithKey is an efficient collection management function when your input is a *static* initial state and an event stream of updates.
 -- This version uses a widget that expects a static input and thus the widget will need to be rebuilt if the incoming
@@ -152,6 +146,21 @@ listWithKeyMaybe :: ( R.Adjustable t m
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Maybe (f a)))
 listWithKeyMaybe fDyn widget = fmap withEmptyToMaybe <$> listWithKeyGeneral Empty (NonEmpty <$> fDyn) widget
 {-# INLINABLE listWithKeyMaybe #-}
+
+{-
+listWithKeyMaybeDyn ::  ( R.Adjustable t m
+                        , R.PostBuild t m
+                        , MonadFix m
+                        , R.MonadHold t m
+                        , Sequenceable (WithEmpty f) a  -- for the listHold
+                        , ToPatchType f
+                        , Functor (Diff f)
+                        , MapLike (Diff f)
+                        , GCompare (FanKey f v))
+  => (v -> g a) -> R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Dynamic t (g a))) -> m (R.Dynamic t (f (g a)))
+listWithKeyMaybeDyn toGA fDyn widget = listWithKeyMaybe fDyn widget >>= maybeHelper toGA fDyn
+-}
+
 
 listWithKeyGeneral :: forall t m f v a. ( R.Adjustable t m
                                         , R.PostBuild t m
@@ -342,6 +351,13 @@ selectViewListWithKeyGeneral emptyFV selection vals mkChild = do
   return $ R.switchPromptlyDyn $ R.leftmost . toList <$> selectChild
 {-# INLINABLE selectViewListWithKey #-}
 
+-- for the case when the widget function produces a (Dynamic t (g a)) and we are using the Maybe variant of these functions
+maybeHelper :: forall t m f g v a. (R.Reflex t, R.MonadHold t m, Distributable f (g a))
+  => (v -> g a) -> R.Dynamic t (f v) -> R.Dynamic t (Maybe (f (R.Dynamic t (g a)))) -> m (R.Dynamic t (f (g a)))
+maybeHelper toGA fDyn dynResult = do
+  let y :: R.Dynamic t (Maybe (R.Dynamic t (f (g a)))) = fmap distributeOverDynPure <$> dynResult
+      newFGEv :: R.Event t (R.Dynamic t (f (g a))) = R.fmapMaybe id (R.updated y)
+  fmap join $ R.holdDyn (fmap toGA <$> fDyn) newFGEv
 
 type ReflexC1 t m = (R.Adjustable t m, R.MonadHold t m)
 type ReflexC2 t m = (ReflexC1 t m, MonadFix m, R.PostBuild t m)

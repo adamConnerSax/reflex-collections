@@ -23,8 +23,6 @@ import Data.Functor.Identity (Identity)
 import Data.Constraint (Dict(Dict), (:-)(Sub))
 import Data.Constraint.Forall (Forall, inst)
 
-import Data.Monoid
-
 data WithEmpty (f :: Type -> Type) (a :: Type) = Empty | NonEmpty (f a)
 
 instance Functor f => Functor (WithEmpty f) where

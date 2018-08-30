@@ -117,11 +117,8 @@ totalArrayBuildLBELWK :: forall t m k v. ( Enum k
                       => FieldWidgetWithKey t m k v -> ArrayEditF t m k v
 totalArrayBuildLBELWK editOneValueWK totalArrayDyn0 = do
   let editW k vDyn =  el "br" blank >> fieldWidgetDyn (editOneValueWK k) (Just vDyn)
-  arrayOfDyn <- RC.listWithKeyMaybe totalArrayDyn0 editW -- Dynamic t (Maybe (A.Array k (Dynamic t (Maybe v))))
-  let y :: Dynamic t (Maybe (Dynamic t (A.Array k (Maybe v)))) = fmap RC.distributeOverDynPure <$> arrayOfDyn
-      newArrayMaybeEv :: Event t (Dynamic t (A.Array k (Maybe v)))  = fmapMaybe id (updated y)
-  fmap (fmap sequence . join) $ holdDyn (fmap Just <$> totalArrayDyn0) newArrayMaybeEv
-
+  arrayMaybeDyn <- RC.listWithKeyMaybe totalArrayDyn0 editW >>= RC.maybeHelper Just totalArrayDyn0 -- Dynamic t (A.Array k (Maybe v))
+  return $ fmap sequence arrayMaybeDyn
 
 -- NB: ListViewWithKey returns an Event t (M.Map k v) but it contains only the keys for which things have changed
 -- So we use applyMap to put those edits into the output.
