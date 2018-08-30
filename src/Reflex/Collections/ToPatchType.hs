@@ -16,8 +16,11 @@ module Reflex.Collections.ToPatchType
   (
     ToPatchType(..)
   , SeqTypes(..)
+  , Sequenceable
   , functorMappedToSeqType
+  , Distributable
   , distributeOverDynPure
+  , Mergeable
   , mergeOver
   ) where
 
@@ -56,24 +59,20 @@ import qualified Data.Sequence           as S
 import qualified Data.Foldable           as F
 
 
+-- some constraint helpers to simplify sigs
+type Sequenceable f v = (ToPatchType f, SeqTypes f v, PatchSequenceable (SeqType f v) (SeqPatchType f v))
+type Distributable f v = (Sequenceable f v, ReflexSequenceable (SeqType f v))
+type Mergeable f v = (Sequenceable f v, ReflexMergeable (SeqType f v))
+
 -- | Generalize distributeMapOverDynPure
 -- NB: Use of "unsafeFromSeqType" is okay here since we know there is a value for every key in the input
-distributeOverDynPure :: ( R.Reflex t
-                         , ToPatchType f
-                         , SeqTypes f v
-                         , PatchSequenceable (SeqType f v) (SeqPatchType f v)
-                         , ReflexSequenceable (SeqType f v))
-  => f (R.Dynamic t v) -> R.Dynamic t (f v)
+distributeOverDynPure :: (R.Reflex t, Distributable f v) => f (R.Dynamic t v) -> R.Dynamic t (f v)
 distributeOverDynPure = fmap unsafeFromSeqType . sequenceDynamic . withFunctorToSeqType
 {-# INLINABLE distributeOverDynPure #-}
 
 -- | Generalizes "mergeMap" to anything with ToPatchType where the Patches are Sequenceable.
-mergeOver :: forall t f v. ( R.Reflex t
-                           , ToPatchType f
-                           , SeqTypes f v
-                           , PatchSequenceable (SeqType f v) (SeqPatchType f v)
-                           , ReflexMergeable (SeqType f v))
-  => f (R.Event t v) -> R.Event t (Diff f v)
+
+mergeOver :: forall t f v. (R.Reflex t, Mergeable f v) => f (R.Event t v) -> R.Event t (Diff f v)
 mergeOver fEv =
   let id2 = const id :: (k -> R.Event t v -> R.Event t v)
   in fmap (fromSeqType (Proxy :: Proxy f)) . mergeEvents $ functorMappedToSeqType id2 fEv
@@ -89,7 +88,7 @@ class SeqTypes (f :: Type -> Type) (v :: Type) where
   emptySeq :: Proxy f -> Proxy v -> Proxy g -> SeqType f v g
   default emptySeq :: (Monoid (SeqType f v g)) => Proxy f -> Proxy v -> Proxy g -> SeqType f v g
   emptySeq _ _ _ = mempty
-  nullSeq :: Proxy f -> Proxy v -> Proxy g -> SeqType f v g -> Bool
+  nullSeq :: Proxy f -> Proxy v -> SeqType f v Identity -> Bool
 
   
 -- This class has the capabilities to translate f v and its difftype into types
@@ -115,7 +114,7 @@ class (KeyedCollection f, Diffable f) => ToPatchType (f :: Type -> Type) where
 instance Ord k => SeqTypes (Map k) v where
   type SeqType (Map k) v = DMap (Const2 k v)
   type SeqPatchType (Map k) v = PatchDMap (Const2 k v)
-  nullSeq _ _ _ = DM.null
+  nullSeq _ _ = DM.null
 
 instance Ord k => ToPatchType (Map k) where
   type FanKey (Map k) = Const2 k
@@ -138,7 +137,7 @@ instance Ord k => ToPatchType (Map k) where
 instance Ord k => SeqTypes (HashMap k) v where
   type SeqType (HashMap k) v = DMap (Const2 k v)
   type SeqPatchType (HashMap k) v = PatchDMap (Const2 k v)
-  nullSeq _ _ _ = DM.null
+  nullSeq _ _ = DM.null
 
 instance (Ord k, Eq k, Hashable k) => ToPatchType (HashMap k) where
   type FanKey (HashMap k) = Const2 k
@@ -161,7 +160,7 @@ instance (Ord k, Eq k, Hashable k) => ToPatchType (HashMap k) where
 instance SeqTypes Tree v where
   type SeqType Tree v = DMap (Const2 (S.Seq Int) v)
   type SeqPatchType Tree v = PatchDMap (Const2 (S.Seq Int) v)
-  nullSeq _ _ _ = DM.null
+  nullSeq _ _ = DM.null
 
 instance ToPatchType Tree where
   type FanKey Tree = Const2 (S.Seq Int)
@@ -186,7 +185,7 @@ instance ToPatchType Tree where
 instance SeqTypes IntMap v where
   type SeqType IntMap v = ComposedIntMap v
   type SeqPatchType IntMap v = ComposedPatchIntMap v
-  nullSeq _ _ _ (ComposedIntMap cim) = IM.null $ getCompose cim
+  nullSeq _ _ (ComposedIntMap cim) = IM.null $ getCompose cim
     
 instance ToPatchType IntMap where
   type FanKey IntMap = Const2 Int
@@ -209,7 +208,7 @@ instance ToPatchType IntMap where
 instance SeqTypes [] v where
   type SeqType [] v = ComposedIntMap v
   type SeqPatchType [] v = ComposedPatchIntMap v
-  nullSeq _ _ _ (ComposedIntMap cim) = IM.null $ getCompose cim
+  nullSeq _ _ (ComposedIntMap cim) = IM.null $ getCompose cim
 
 instance ToPatchType [] where
   type FanKey [] = Const2 Int
@@ -232,7 +231,7 @@ instance ToPatchType [] where
 instance SeqTypes S.Seq v where
   type SeqType S.Seq v = ComposedIntMap v
   type SeqPatchType S.Seq v = ComposedPatchIntMap v
-  nullSeq _ _ _ (ComposedIntMap cim) = IM.null $ getCompose cim
+  nullSeq _ _ (ComposedIntMap cim) = IM.null $ getCompose cim
 
 instance ToPatchType S.Seq where
   type FanKey S.Seq = Const2 Int
@@ -260,7 +259,7 @@ instance ToPatchType S.Seq where
 instance SeqTypes (Array k) v where
   type SeqType (Array k) v = ComposedIntMap v
   type SeqPatchType (Array k) v = ComposedPatchIntMap v
-  nullSeq _ _ _ (ComposedIntMap cim) = IM.null $ getCompose cim
+  nullSeq _ _ (ComposedIntMap cim) = IM.null $ getCompose cim
 
 instance (Enum k, Bounded k, Ix k) => ToPatchType (Array k) where
   type FanKey (Array k) = Const2 k

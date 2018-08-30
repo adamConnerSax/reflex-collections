@@ -1,6 +1,5 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE InstanceSigs               #-}
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -48,12 +47,6 @@ instance KeyedCollection f => KeyedCollection (WithEmpty f) where
   toKeyValueList (NonEmpty t) = toKeyValueList t
   fromKeyValueList [] = Empty
   fromKeyValueList kvs = NonEmpty $ fromKeyValueList kvs
-
-liftDiff :: (Diffable f, MapLike (Diff f)) => (f v -> f v -> Diff f (Maybe v)) -> WithEmpty f v -> WithEmpty f v -> Diff f (Maybe v)
-liftDiff _ Empty Empty = mlEmpty
-liftDiff _ Empty (NonEmpty new) = Just <$> toDiff new
-liftDiff _ (NonEmpty old) Empty = const Nothing <$> toDiff old
-liftDiff dF (NonEmpty old) (NonEmpty new) = dF old new 
   
 instance (Diffable f, MapLike (Diff f)) => Diffable (WithEmpty f) where
   type Diff (WithEmpty f) = Diff f
@@ -63,7 +56,12 @@ instance (Diffable f, MapLike (Diff f)) => Diffable (WithEmpty f) where
   diffNoEq = liftDiff diffNoEq
   diff = liftDiff diff
   diffOnlyKeyChanges = liftDiff diffOnlyKeyChanges
-  
+
+liftDiff :: (Diffable f, MapLike (Diff f)) => (f v -> f v -> Diff f (Maybe v)) -> WithEmpty f v -> WithEmpty f v -> Diff f (Maybe v)
+liftDiff _ Empty Empty = mlEmpty
+liftDiff _ Empty (NonEmpty new) = Just <$> toDiff new
+liftDiff _ (NonEmpty old) Empty = const Nothing <$> toDiff old
+liftDiff dF (NonEmpty old) (NonEmpty new) = dF old new 
 
 instance SeqTypes f v => SeqTypes (WithEmpty f) v where
   type SeqType (WithEmpty f) v = SeqType f v 
@@ -71,13 +69,12 @@ instance SeqTypes f v => SeqTypes (WithEmpty f) v where
   emptySeq _ = emptySeq (Proxy :: Proxy f)
   nullSeq _ = nullSeq (Proxy :: Proxy f)
 
--- The following use of Data.Constraint.Forall is really necessary here.
+-- The following use of Data.Constraint.Forall seems necessary here.
 -- Without it, GHC cannot resolve the SeqTypes f v constraint.  Which it needs to call typeclass methods in `SeqTypes (With f) v`
 -- This will all be much nicer with quantified constraints.
 instance (MapLike (Diff f), ToPatchType f, Forall (SeqTypes f)) => ToPatchType (WithEmpty f) where
   type FanKey (WithEmpty f) = FanKey f
   {-# INLINABLE withFunctorToSeqType #-}
---  withFunctorToSeqType :: Functor g => (WithEmpty f) (g v) -> SeqType (WithEmpty f) v g 
   withFunctorToSeqType (Empty :: WithEmpty f (g v))  = emptySeq (Proxy :: Proxy (WithEmpty f)) (Proxy :: Proxy v) (Proxy :: Proxy (g :: Type -> Type))
   withFunctorToSeqType (NonEmpty t :: WithEmpty f (g v)) =
     case inst :: Forall (SeqTypes f) :- SeqTypes f v of
@@ -87,10 +84,10 @@ instance (MapLike (Diff f), ToPatchType f, Forall (SeqTypes f)) => ToPatchType (
   {-# INLINABLE fromSeqType #-}     
   fromSeqType _ = fromSeqType (Proxy :: Proxy f)   
   {-# INLINABLE unsafeFromSeqType #-}
-  unsafeFromSeqType :: forall a. SeqType (WithEmpty f) a Identity -> (WithEmpty f) a -- may fail for some types if keys are missing
-  unsafeFromSeqType st =
-    case (inst :: Forall (SeqTypes f) :- SeqTypes f a) of
-      Sub Dict -> if nullSeq (Proxy :: Proxy (WithEmpty f)) (Proxy :: Proxy a) (Proxy :: Proxy Identity) st then Empty else NonEmpty $ unsafeFromSeqType st 
+  unsafeFromSeqType = go where
+    go :: forall a. SeqType (WithEmpty f) a Identity -> (WithEmpty f) a   -- a signature required here to scope the 'a'
+    go x = case (inst :: Forall (SeqTypes f) :- SeqTypes f a) of
+      Sub Dict -> if nullSeq (Proxy :: Proxy (WithEmpty f)) (Proxy :: Proxy a) x then Empty else NonEmpty $ unsafeFromSeqType x
   {-# INLINABLE makeFanKey #-}  
   makeFanKey _ pv = makeFanKey (Proxy :: Proxy f) pv
   {-# INLINABLE doFan #-}  
