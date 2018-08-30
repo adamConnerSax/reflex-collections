@@ -7,7 +7,11 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE TypeOperators              #-}
-module Reflex.Collections.WithEmpty where
+module Reflex.Collections.WithEmpty
+  (
+    WithEmpty (..)
+  , withEmptyToMaybe
+  ) where
 
 import Reflex.Collections.KeyedCollection (KeyedCollection(..))
 import Reflex.Collections.Diffable (MapLike(..), Diffable(..))
@@ -27,6 +31,10 @@ data WithEmpty (f :: Type -> Type) (a :: Type) = Empty | NonEmpty (f a)
 instance Functor f => Functor (WithEmpty f) where
   fmap _ Empty = Empty
   fmap g (NonEmpty t) = NonEmpty $ fmap g t
+
+instance Foldable f => Foldable (WithEmpty f) where
+  foldMap _ Empty = mempty
+  foldMap f (NonEmpty x) = foldMap f x
 
 withEmptyToMaybe :: WithEmpty f a -> Maybe (f a)
 withEmptyToMaybe Empty = Nothing
