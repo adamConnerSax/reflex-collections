@@ -70,6 +70,8 @@ module Reflex.Collections.Collections
   , Patchable
   , Distributable
   , Mergeable
+  , GCompare
+  , FanKey
   , SeqTypes
   , WithEmpty
   ) where
