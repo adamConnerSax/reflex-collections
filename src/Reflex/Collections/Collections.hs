@@ -336,18 +336,18 @@ selectViewListWithKeyGeneral emptyFV selection vals mkChild = do
 -- for the case when the widget function produces a (Dynamic t (g a)) and we are using the Maybe variant of these functions
 -- I would like to include the widget here so that the types show that the widget must return m (Dynamic t (g a)) but I can't get that to
 -- compile
-simplifyDynMaybe :: (R.Reflex t, R.MonadHold t m, Distributable f (g a))
-  => (v -> g a)
-  -> (R.Dynamic t (f v) -> m (R.Dynamic t (Maybe (f (R.Dynamic t (g a))))))
+simplifyDynMaybe :: (R.Reflex t, R.MonadHold t m, Distributable f b)
+  => (v -> b)
+  -> (R.Dynamic t (f v) -> m (R.Dynamic t (Maybe (f (R.Dynamic t b)))))
   -> R.Dynamic t (f v)
-  -> m (R.Dynamic t (f (g a)))
+  -> m (R.Dynamic t (f b))
 simplifyDynMaybe toGA collectionF fDyn = collectionF fDyn  >>= maybeHelper toGA fDyn
 
-maybeHelper :: forall t m f g v a. (R.Reflex t, R.MonadHold t m, Distributable f (g a))
-  => (v -> g a) -> R.Dynamic t (f v) -> R.Dynamic t (Maybe (f (R.Dynamic t (g a)))) -> m (R.Dynamic t (f (g a)))
+maybeHelper :: forall t m f v b. (R.Reflex t, R.MonadHold t m, Distributable f b)
+  => (v -> b) -> R.Dynamic t (f v) -> R.Dynamic t (Maybe (f (R.Dynamic t b))) -> m (R.Dynamic t (f b))
 maybeHelper toGA fDyn dynResult = do
-  let y :: R.Dynamic t (Maybe (R.Dynamic t (f (g a)))) = fmap distributeOverDynPure <$> dynResult
-      newFGEv :: R.Event t (R.Dynamic t (f (g a))) = R.fmapMaybe id (R.updated y)
+  let y :: R.Dynamic t (Maybe (R.Dynamic t (f b))) = fmap distributeOverDynPure <$> dynResult
+      newFGEv :: R.Event t (R.Dynamic t (f b)) = R.fmapMaybe id (R.updated y)
   fmap join $ R.holdDyn (fmap toGA <$> fDyn) newFGEv
 
 type ReflexC1 t m = (R.Adjustable t m, R.MonadHold t m)
