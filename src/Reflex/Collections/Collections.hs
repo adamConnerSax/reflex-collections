@@ -61,15 +61,22 @@ module Reflex.Collections.Collections
   , selectViewListWithKeyMaybe
   , simplifyDynMaybe
   , maybeHelper
+-- re-exports
   , mergeOver
   , distributeOverDynPure
+  , KeyedCollection(..)
+  , Diffable (..)
+  , MapLike (..)
+  , Patchable
+  , Distributable
+  , Mergeable
+  , SeqTypes
+  , WithEmpty
   ) where
 
 
 import           Reflex.Collections.Diffable        (Diffable (..),
-                                                     MapLike (..), applyDiff,
-                                                     diffOnlyKeyChanges,
-                                                     editDiffLeavingDeletes)
+                                                     MapLike (..))
 import           Reflex.Collections.KeyedCollection (KeyedCollection (..))
 import           Reflex.Collections.Sequenceable    (PatchSequenceable (..),
                                                      ReflexMergeable (..))
