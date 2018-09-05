@@ -284,16 +284,16 @@ listWithKeyShallowDiff initialVals valsChanged mkChild = do
 -- you can feed a Dynamic of the Key type and the individual widgets will get a Dynamic Bool input
 -- so it can handle whether or not it is currently selected.
 selectViewListWithKey :: ( R.Adjustable t m
-                                , MonadFix m
-                                , R.MonadHold t m
-                                , R.PostBuild t m
-                                , Foldable f -- for toList
-                                , Patchable f a -- for the listHold
-                                , Patchable f (R.Event t (Key f, a)) -- for the listHold
-                                , Functor (Diff f)
-                                , Monoid (f v)
-                                , GCompare (FanKey f v)
-                                , Ord (Key f))
+                         , MonadFix m
+                         , R.MonadHold t m
+                         , R.PostBuild t m
+                         , Foldable f -- for toList
+                         , Patchable f a -- for the listHold
+                         , Patchable f (R.Event t (Key f, a)) -- for the listHold
+                         , Functor (Diff f)
+                         , Monoid (f v)
+                         , GCompare (FanKey f v)
+                         , Ord (Key f))
   => R.Dynamic t (Key f)          -- ^ Current selection key
   -> R.Dynamic t (f v)      -- ^ Dynamic container of values
   -> (Key f -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -- ^ Function to create a widget for a given key from Dynamic value and Dynamic Bool indicating if this widget is currently selected
@@ -309,7 +309,6 @@ selectViewListWithKeyMaybe :: ( R.Adjustable t m
                               , Patchable f (R.Event t (Key f, a)) -- for the listHold
                               , Functor (Diff f)
                               , MapLike (Diff f)
-                              , Monoid (f v)
                               , GCompare (FanKey f v)
                               , Ord (Key f))
   => R.Dynamic t (Key f)          -- ^ Current selection key
@@ -350,7 +349,7 @@ simplifyDynMaybe :: (R.Reflex t, R.MonadHold t m, Distributable f b)
   -> (R.Dynamic t (f v) -> m (R.Dynamic t (Maybe (f (R.Dynamic t b)))))
   -> R.Dynamic t (f v)
   -> m (R.Dynamic t (f b))
-simplifyDynMaybe toGA collectionF fDyn = collectionF fDyn  >>= maybeHelper toGA fDyn
+simplifyDynMaybe toB collectionF fDyn = collectionF fDyn  >>= maybeHelper toB fDyn
 
 maybeHelper :: forall t m f v b. (R.Reflex t, R.MonadHold t m, Distributable f b)
   => (v -> b) -> R.Dynamic t (f v) -> R.Dynamic t (Maybe (f (R.Dynamic t b))) -> m (R.Dynamic t (f b))
