@@ -184,11 +184,11 @@ buildLBEMapSVLWK editOneValueWK mapDyn0 = mdo
       defaultKeyEv = fmapMaybe id $ tagPromptlyDyn (headMay . M.keys <$> mapDyn) nonNullEv -- headMay and fmapMaybe id are redundant here but...
       widgetEv = leftmost [nullWidgetEv, selectWidget <$> defaultKeyEv]
 
-  mapEditEvDyn <- widgetHold nullWidget widgetEv -- Dynamic (Event t (k,Maybe v))
+  mapEditEvDyn <- widgetHold nullWidget widgetEv -- Dynamic (Event t (Map k (Maybe v))
   mapEditEvBeh <- hold never (updated mapEditEvDyn)
-  let mapEditEv = switch mapEditEvBeh -- Event t (k,Maybe v)
-      mapPatchEv = uncurry M.singleton <$> mapEditEv
-      editedMapEv = attachWith (flip applyMap) (current mapDyn) mapPatchEv
+  let mapEditEv = switch mapEditEvBeh -- Event t (Map k(Maybe v))
+--      mapPatchEv = uncurry M.singleton <$> mapEditEv
+      editedMapEv = attachWith (flip applyMap) (current mapDyn) mapEditEv
       updatedMapEv = leftmost [newInputMapEv, editedMapEv] -- order matters here.  mapEditEv on new map will not have the whole map.  Arbitrary patch.
   mapDyn <- holdDyn M.empty updatedMapEv
   return mapDyn

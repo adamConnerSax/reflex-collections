@@ -96,7 +96,6 @@ import qualified Reflex                             as R
 import           Control.Monad                      (join, void)
 import           Control.Monad.Fix                  (MonadFix)
 import           Data.Dependent.Map                 (GCompare)
-import           Data.Foldable                      (Foldable, toList)
 import           Data.Proxy                         (Proxy (..))
 
 -- for specializtions
@@ -289,7 +288,8 @@ selectViewListWithKey :: ( R.Adjustable t m
                          , R.PostBuild t m
                          , Foldable f -- for toList
                          , Patchable f a -- for the listHold
-                         , Patchable f (R.Event t (Key f, a)) -- for the listHold
+                         , Patchable f (R.Event t a) -- for the listHold
+                         , ReflexMergeable (SeqType f a)
                          , Functor (Diff f)
                          , Monoid (f v)
                          , GCompare (FanKey f v)
@@ -297,7 +297,7 @@ selectViewListWithKey :: ( R.Adjustable t m
   => R.Dynamic t (Key f)          -- ^ Current selection key
   -> R.Dynamic t (f v)      -- ^ Dynamic container of values
   -> (Key f -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -- ^ Function to create a widget for a given key from Dynamic value and Dynamic Bool indicating if this widget is currently selected
-  -> m (R.Event t (Key f, a))        -- ^ Event that fires when any child's return Event fires.  Contains key of an arbitrary firing widget.
+  -> m (R.Event t (Diff f a))        -- ^ Event that fires when any child's return Event fires.
 selectViewListWithKey  = selectViewListWithKeyGeneral mempty
 
 selectViewListWithKeyMaybe :: ( R.Adjustable t m
@@ -306,7 +306,8 @@ selectViewListWithKeyMaybe :: ( R.Adjustable t m
                               , R.PostBuild t m
                               , Foldable f -- for toList
                               , Patchable (WithEmpty f) a -- for the listHold
-                              , Patchable f (R.Event t (Key f, a)) -- for the listHold
+                              , Patchable f (R.Event t a) -- for the listHold
+                              , ReflexMergeable (SeqType f a)
                               , Functor (Diff f)
                               , MapLike (Diff f)
                               , GCompare (FanKey f v)
@@ -314,7 +315,7 @@ selectViewListWithKeyMaybe :: ( R.Adjustable t m
   => R.Dynamic t (Key f)          -- ^ Current selection key
   -> R.Dynamic t (f v)      -- ^ Dynamic container of values
   -> (Key f -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -- ^ Function to create a widget for a given key from Dynamic value and Dynamic Bool indicating if this widget is currently selected
-  -> m (R.Event t (Key f, a))        -- ^ Event that fires when any child's return Event fires.  Contains key of an arbitrary firing widget.
+  -> m (R.Event t (Diff f a))        -- ^ Event that fires when any child's return Event fires.
 selectViewListWithKeyMaybe  keyDyn fDyn widget = selectViewListWithKeyGeneral Empty keyDyn (NonEmpty <$> fDyn) widget
 
 selectViewListWithKeyGeneral :: ( R.Adjustable t m
@@ -323,7 +324,8 @@ selectViewListWithKeyGeneral :: ( R.Adjustable t m
                                 , R.PostBuild t m
                                 , Foldable f -- for toList
                                 , Patchable f a -- for the listHold
-                                , Patchable f (R.Event t (Key f, a)) -- for the listHold
+                                , Patchable f (R.Event t a) -- for the listHold
+                                , ReflexMergeable (SeqType f a)
                                 , Functor (Diff f)
                                 , GCompare (FanKey f v)
                                 , Ord (Key f))
@@ -331,14 +333,15 @@ selectViewListWithKeyGeneral :: ( R.Adjustable t m
   -> R.Dynamic t (Key f)          -- ^ Current selection key
   -> R.Dynamic t (f v)      -- ^ Dynamic container of values
   -> (Key f -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -- ^ Function to create a widget for a given key from Dynamic value and Dynamic Bool indicating if this widget is currently selected
-  -> m (R.Event t (Key f, a))        -- ^ Event that fires when any child's return Event fires.  Contains key of an arbitrary firing widget.
+  -> m (R.Event t (Diff f a))        -- ^ Event that fires when any child's return Event fires.
 selectViewListWithKeyGeneral emptyFV selection vals mkChild = do
   let selectionDemux = R.demux selection -- For good performance, this value must be shared across all children
   selectChild <- listWithKeyGeneral emptyFV vals $ \k v -> do
     let selected = R.demuxed selectionDemux k
     selectSelf <- mkChild k v selected
-    return $ fmap ((,) k) selectSelf
-  return $ R.switchPromptlyDyn $ R.leftmost . toList <$> selectChild
+--    return $ fmap ((,) k) selectSelf
+    return selectSelf
+  return $ R.switchPromptlyDyn (mergeOver <$> selectChild)
 {-# INLINABLE selectViewListWithKey #-}
 
 -- for the case when the widget function produces a (Dynamic t (g a)) and we are using the Maybe variant of these functions
@@ -392,8 +395,8 @@ type ReflexC2 t m = (ReflexC1 t m, MonadFix m, R.PostBuild t m)
 {-# SPECIALIZE listWithKeyShallowDiff :: ReflexC2 t m => Seq v -> R.Event t (IntMap (Maybe v)) -> (Int -> v -> R.Event t v -> m a) -> m (R.Dynamic t (Seq a)) #-}
 {-# SPECIALIZE listWithKeyShallowDiff :: ReflexC2 t m => Tree v -> R.Event t (Map (Seq Int) (Maybe v)) -> (Seq Int -> v -> R.Event t v -> m a) -> m (R.Dynamic t (Tree a)) #-}
 
-{-# SPECIALIZE selectViewListWithKey :: (ReflexC2 t m, Ord k) => R.Dynamic t k -> R.Dynamic t (Map k v) -> (k -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (k, a)) #-}
-{-# SPECIALIZE selectViewListWithKey :: (ReflexC2 t m, Ord k, Hashable k) => R.Dynamic t k -> R.Dynamic t (HashMap k v) -> (k -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (k, a)) #-}
-{-# SPECIALIZE selectViewListWithKey :: ReflexC2 t m => R.Dynamic t Int -> R.Dynamic t (IntMap v) -> (Int -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (Int, a)) #-}
-{-# SPECIALIZE selectViewListWithKey :: ReflexC2 t m => R.Dynamic t Int -> R.Dynamic t [v] -> (Int -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (Int, a)) #-}
-{-# SPECIALIZE selectViewListWithKey :: ReflexC2 t m => R.Dynamic t Int -> R.Dynamic t (Seq v) -> (Int -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (Int, a)) #-}
+{-# SPECIALIZE selectViewListWithKey :: (ReflexC2 t m, Ord k) => R.Dynamic t k -> R.Dynamic t (Map k v) -> (k -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (Map k a)) #-}
+{-# SPECIALIZE selectViewListWithKey :: (ReflexC2 t m, Ord k, Hashable k) => R.Dynamic t k -> R.Dynamic t (HashMap k v) -> (k -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (HashMap k a)) #-}
+{-# SPECIALIZE selectViewListWithKey :: ReflexC2 t m => R.Dynamic t Int -> R.Dynamic t (IntMap v) -> (Int -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (IntMap a)) #-}
+{-# SPECIALIZE selectViewListWithKey :: ReflexC2 t m => R.Dynamic t Int -> R.Dynamic t [v] -> (Int -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (IntMap a)) #-}
+{-# SPECIALIZE selectViewListWithKey :: ReflexC2 t m => R.Dynamic t Int -> R.Dynamic t (Seq v) -> (Int -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (IntMap a)) #-}
