@@ -20,8 +20,6 @@ import Reflex (fmapMaybe)
 import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
 import Data.Functor.Identity (Identity)
-import Data.Constraint (Dict(Dict), (:-)(Sub))
-import Data.Constraint.Forall (Forall, inst)
 
 data WithEmpty (f :: Type -> Type) (a :: Type) = Empty | NonEmpty (f a)
 
@@ -65,7 +63,7 @@ liftDiff _ Empty (NonEmpty new) = Just <$> toDiff new
 liftDiff _ (NonEmpty old) Empty = const Nothing <$> toDiff old
 liftDiff dF (NonEmpty old) (NonEmpty new) = dF old new 
 
-instance SeqTypes f v => SeqTypes (WithEmpty f) v where
+instance SeqTypes f => SeqTypes (WithEmpty f) where
   type SeqType (WithEmpty f) v = SeqType f v 
   type SeqPatchType (WithEmpty f) v = SeqPatchType f v
   emptySeq _ = emptySeq (Proxy :: Proxy f)
@@ -74,13 +72,11 @@ instance SeqTypes f v => SeqTypes (WithEmpty f) v where
 -- The following use of Data.Constraint.Forall seems necessary here.
 -- Without it, GHC cannot resolve the SeqTypes f v constraint.  Which it needs to call typeclass methods in `SeqTypes (With f) v`
 -- This will all be much nicer with quantified constraints.
-instance (MapLike (Diff f), ToPatchType f, Forall (SeqTypes f)) => ToPatchType (WithEmpty f) where
+instance (MapLike (Diff f), ToPatchType f, SeqTypes f) => ToPatchType (WithEmpty f) where
   type FanKey (WithEmpty f) = FanKey f
   {-# INLINABLE withFunctorToSeqType #-}
   withFunctorToSeqType (Empty :: WithEmpty f (g v))  = emptySeq (Proxy :: Proxy (WithEmpty f)) (Proxy :: Proxy v) (Proxy :: Proxy (g :: Type -> Type))
-  withFunctorToSeqType (NonEmpty t :: WithEmpty f (g v)) =
-    case inst :: Forall (SeqTypes f) :- SeqTypes f v of
-      Sub Dict -> withFunctorToSeqType t
+  withFunctorToSeqType (NonEmpty t :: WithEmpty f (g v)) = withFunctorToSeqType t
   {-# INLINABLE makePatchSeq #-}
   makePatchSeq _ h = makePatchSeq (Proxy :: Proxy f) h
   {-# INLINABLE fromSeqType #-}     
@@ -88,8 +84,7 @@ instance (MapLike (Diff f), ToPatchType f, Forall (SeqTypes f)) => ToPatchType (
   {-# INLINABLE unsafeFromSeqType #-}
   unsafeFromSeqType = go where
     go :: forall a. SeqType (WithEmpty f) a Identity -> (WithEmpty f) a   -- a signature required here to scope the 'a'
-    go x = case (inst :: Forall (SeqTypes f) :- SeqTypes f a) of
-      Sub Dict -> if nullSeq (Proxy :: Proxy (WithEmpty f)) (Proxy :: Proxy a) x then Empty else NonEmpty $ unsafeFromSeqType x
+    go x = if nullSeq (Proxy :: Proxy (WithEmpty f)) (Proxy :: Proxy a) x then Empty else NonEmpty $ unsafeFromSeqType x
   {-# INLINABLE makeFanKey #-}  
   makeFanKey _ pv = makeFanKey (Proxy :: Proxy f) pv
   {-# INLINABLE doFan #-}  
