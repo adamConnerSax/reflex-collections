@@ -64,8 +64,8 @@ liftDiff _ (NonEmpty old) Empty = const Nothing <$> toDiff old
 liftDiff dF (NonEmpty old) (NonEmpty new) = dF old new 
 
 instance SeqTypes f => SeqTypes (WithEmpty f) where
-  type SeqType (WithEmpty f) v = SeqType f v 
-  type SeqPatchType (WithEmpty f) v = SeqPatchType f v
+  type SeqType (WithEmpty f) = SeqType f 
+  type SeqPatchType (WithEmpty f) = SeqPatchType f
   emptySeq _ = emptySeq (Proxy :: Proxy f)
   nullSeq _ = nullSeq (Proxy :: Proxy f)
 

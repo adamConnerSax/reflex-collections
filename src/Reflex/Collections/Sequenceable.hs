@@ -6,6 +6,8 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
@@ -15,6 +17,8 @@ module Reflex.Collections.Sequenceable
     ReflexMergeable (..)
   , PatchSequenceable(..)
   , ReflexSequenceable(..)
+  , DMapConst2 (..)
+  , PatchDMapConst2 (..)
   ) where
 
 import qualified Reflex                 as R
@@ -29,18 +33,32 @@ import           Control.Monad.Identity (Identity (..))
 import           Data.Kind              (Type)
 import qualified Data.IntMap            as IM
 import           Data.Functor.Compose   (Compose(..), getCompose)
+import           Data.Constraint ((:-)(Sub), Dict(Dict))
+import           Data.Constraint.Forall (ForallF, instF)
 
 -- | This class carries the ability to do an efficient event merge
 -- "Merge a collection of events.  The resulting event will occur if at least one input event is occuring
 -- and will contain all simultaneously occurring events."
-class ReflexMergeable (f :: (Type -> Type) -> Type) where
-  mergeEvents :: R.Reflex t => f (R.Event t) -> R.Event t (f Identity)
+class ReflexMergeable (f :: Type -> (Type -> Type) -> Type) where
+  mergeEvents :: R.Reflex t => f a (R.Event t) -> R.Event t (f a Identity)
 
-instance GCompare k => ReflexMergeable (DMap k) where
+
+-- we lose some power by narrowing the classes below to the Const2 case.  We will need new instances
+-- for other DMap keys.  But we gain constraint simplification, effectively quantifying over the element type.
+-- Once quantified constraints are usable in all versions of GHC we want to support we could
+-- probably fix these.
+-- As it is, we need to quantify the GCompare (Const2 k a) constraint. Which we do via the constraints package.
+newtype DMapConst2 k a f = DMapConst2  { unDMapConst2 :: DMap (Const2 k a) f }
+newtype PatchDMapConst2 k a f = PatchDMapConst2 { unPatchDMapConst2 :: PatchDMap (Const2 k a) f }
+
+instance (Ord k, ForallF GCompare (Const2 k)) => ReflexMergeable (DMapConst2 k) where
   {-# INLINABLE mergeEvents #-}
-  mergeEvents = R.merge
+  mergeEvents :: forall t a. R.Reflex t => DMapConst2 k a (R.Event t) -> R.Event t (DMapConst2 k a Identity)
+  mergeEvents =
+    case instF :: ForallF GCompare (Const2 k) :- GCompare (Const2 k a) of
+      Sub Dict -> fmap DMapConst2 . R.merge . unDMapConst2
 
-instance ReflexMergeable (ComposedIntMap a) where
+instance ReflexMergeable ComposedIntMap where
   {-# INLINABLE mergeEvents #-}
   mergeEvents = fmap (ComposedIntMap . Compose . fmap Identity) . R.mergeInt . getCompose  . unCI
 
@@ -51,30 +69,32 @@ instance ReflexMergeable (ComposedIntMap a) where
 -- patchPairToDynamic is a sort of inverse, turning a static d containing values and events with patches to it, new values at some keys,
 -- and returns an adjustable monad containing a Dynamic of a value containing d.
 -- |
-class ( R.Patch (pd Identity)
-      , R.PatchTarget (pd Identity) ~ d Identity)
-  => PatchSequenceable d pd  where
-  sequenceWithPatch :: R.Adjustable t m => d m -> R.Event t (pd m) -> m (d Identity, R.Event t (pd Identity))
-  patchPairToDynamic :: (R.MonadHold t m, R.Reflex t) => d Identity -> R.Event t (pd Identity) -> m (R.Dynamic t (d Identity))
+class PatchSequenceable (d :: Type -> (Type -> Type) -> Type) (pd :: Type -> (Type -> Type) -> Type)  where
+  sequenceWithPatch :: R.Adjustable t m => d a m -> R.Event t (pd a m) -> m (d a Identity, R.Event t (pd a Identity))
+  patchPairToDynamic :: (R.MonadHold t m, R.Reflex t) => d a Identity -> R.Event t (pd a Identity) -> m (R.Dynamic t (d a Identity))
 
--- | DMaps and IntMaps are our prime examples of something sequenceable
-instance (GCompare (Const2 k a), Ord k) => PatchSequenceable (DMap (Const2 k a)) (PatchDMap (Const2 k a)) where
+-- | DMap (Const2 k a) and IntMap a are our prime examples of something sequenceable
+instance (Ord k, ForallF GCompare (Const2 k), Ord k) => PatchSequenceable (DMapConst2 k) (PatchDMapConst2 k) where
   {-# INLINABLE sequenceWithPatch #-}
-  sequenceWithPatch :: R.Adjustable t m
-                    => DMap (Const2 k a) m
-                    -> R.Event t (PatchDMap (Const2 k a) m)
-                    -> m (DMap (Const2 k a) Identity, R.Event t (PatchDMap (Const2 k a) Identity))
-  sequenceWithPatch = R.sequenceDMapWithAdjust
+  sequenceWithPatch :: forall t m a. R.Adjustable t m
+    => DMapConst2 k a m
+    -> R.Event t (PatchDMapConst2 k a m)
+    -> m (DMapConst2 k a Identity, R.Event t (PatchDMapConst2 k a Identity))
+  sequenceWithPatch dmc2 pdmc2Ev =
+    case instF :: ForallF GCompare (Const2 k) :- GCompare (Const2 k a) of 
+      Sub Dict -> fmap (\(dm, pdEv) -> (DMapConst2 dm, fmap PatchDMapConst2 pdEv)) $ R.sequenceDMapWithAdjust (unDMapConst2 dmc2) (unPatchDMapConst2 <$> pdmc2Ev)
 
   {-# INLINABLE patchPairToDynamic #-} 
-  patchPairToDynamic :: (R.MonadHold t m, R.Reflex t)
-                     => DMap (Const2 k a) Identity
-                     -> R.Event t (PatchDMap (Const2 k a) Identity)
-                     -> m (R.Dynamic t (DMap (Const2 k a) Identity))
-  patchPairToDynamic a0 a' = R.incrementalToDynamic <$> R.holdIncremental a0 a'
+  patchPairToDynamic :: forall t m a. (R.MonadHold t m, R.Reflex t)
+    => DMapConst2 k a Identity
+    -> R.Event t (PatchDMapConst2 k a Identity)
+    -> m (R.Dynamic t (DMapConst2 k a Identity))
+  patchPairToDynamic a0 a' =
+    case instF :: ForallF GCompare (Const2 k) :- GCompare (Const2 k a) of
+      Sub Dict -> fmap DMapConst2 <$> R.incrementalToDynamic <$> R.holdIncremental (unDMapConst2 a0) (unPatchDMapConst2 <$> a')
 
 
-instance PatchSequenceable (ComposedIntMap a) (ComposedPatchIntMap a) where
+instance PatchSequenceable ComposedIntMap ComposedPatchIntMap where
   {-# INLINABLE sequenceWithPatch #-}  
   sequenceWithPatch :: R.Adjustable t m
                     => ComposedIntMap a m
@@ -92,14 +112,17 @@ instance PatchSequenceable (ComposedIntMap a) (ComposedPatchIntMap a) where
   patchPairToDynamic a0 a' = R.incrementalToDynamic <$> R.holdIncremental a0 a'
 
 
-class ReflexSequenceable (f :: (Type -> Type) -> Type) where  
-  sequenceDynamic :: R.Reflex t => f (R.Dynamic t) -> R.Dynamic t (f Identity)
+class ReflexSequenceable (f :: Type -> (Type -> Type) -> Type) where  
+  sequenceDynamic :: R.Reflex t => f a (R.Dynamic t) -> R.Dynamic t (f a Identity)
 
-instance GCompare k => ReflexSequenceable (DMap k) where
+instance (Ord k, ForallF GCompare (Const2 k)) => ReflexSequenceable (DMapConst2 k) where
   {-# INLINABLE sequenceDynamic #-}
-  sequenceDynamic = R.distributeDMapOverDynPure 
+  sequenceDynamic :: forall t a. R.Reflex t => DMapConst2 k a (R.Dynamic t) -> R.Dynamic t (DMapConst2 k a Identity)
+  sequenceDynamic =
+    case instF :: ForallF GCompare (Const2 k) :- GCompare (Const2 k a) of
+      Sub Dict -> fmap DMapConst2 . R.distributeDMapOverDynPure . unDMapConst2 
 
-instance ReflexSequenceable (ComposedIntMap a) where
+instance ReflexSequenceable ComposedIntMap where
   {-# INLINABLE sequenceDynamic #-}
   sequenceDynamic cim =
     let im = (getCompose . unCI $ cim) 
