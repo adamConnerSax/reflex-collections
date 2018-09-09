@@ -61,6 +61,7 @@ module Reflex.Collections.Collections
   , selectViewListWithKeyMaybe
   , simplifyDynMaybe
   , maybeHelper
+  , SequenceableC
 -- re-exports
   , mergeOver
   , distributeOverDynPure
@@ -80,7 +81,7 @@ module Reflex.Collections.Collections
 import           Reflex.Collections.Diffable        (Diffable (..),
                                                      MapLike (..))
 import           Reflex.Collections.KeyedCollection (KeyedCollection (..))
-import           Reflex.Collections.Sequenceable    (PatchSequenceable (..))
+import           Reflex.Collections.Sequenceable    (PatchSequenceable (..), SequenceC)
 import           Reflex.Collections.ToPatchType     (Distributable, Mergeable,
                                                      Patchable, SeqTypes (..),
                                                      ToPatchType (..),
@@ -95,6 +96,7 @@ import qualified Reflex                             as R
 import           Control.Monad                      (join, void)
 import           Control.Monad.Fix                  (MonadFix)
 import           Data.Dependent.Map                 (GCompare)
+import           Data.Functor.Misc                  (Const2 (..))
 import           Data.Proxy                         (Proxy (..))
 
 -- for specializtions
@@ -110,12 +112,15 @@ import           Data.Tree                          (Tree)
 -- Quantified constraints would simplify some signatures here, since we often want (forall a. Patchable f a).  But that'll be a while.
 -- we could use Data.Constraint to do it, but that's messy as well since we'd need to unwrap the dictionaries at the call site.
 
+type SequenceableC f v = (SequenceC (SeqType f) v, SequenceC (SeqPatchType f) v)
+type SequenceableWithEventC t f v = (SequenceableC f v, SequenceableC f (R.Event t v))
+
 -- | listHoldWithKey is an efficient collection management function when your input is a *static* initial state and an event stream of updates.
 -- This version uses a widget that expects a static input and thus the widget will need to be rebuilt if the incoming
 -- event changes the value of v for a given k.  What this function does provide is efficient routing of each event to the specific
 -- widget that has changed, thus rebuilding only the widgets that have changing inputs.
 -- NB: use of unsafeFromSeqType is okay here.  We are updating an initial container which has values for all keys if required.
-listHoldWithKey :: forall t m f v a. (R.Adjustable t m, R.MonadHold t m, Patchable f)
+listHoldWithKey :: forall t m f v a. (R.Adjustable t m, R.MonadHold t m, Patchable f, SequenceableC f a)
   => f v -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> m a) -> m (R.Dynamic t (f a))
 listHoldWithKey c0 c' h = do
   let pf = Proxy :: Proxy f
@@ -132,9 +137,10 @@ listWithKey :: ( R.Adjustable t m
                , R.PostBuild t m
                , MonadFix m
                , R.MonadHold t m
-               , Patchable f  -- for the listHold
+               , Patchable f
                , Monoid (f v)
                , Functor (Diff f)
+               , SequenceableC f a
                , GCompare (FanKey f v))
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
 listWithKey = listWithKeyGeneral mempty
@@ -144,9 +150,10 @@ listWithKeyMaybe :: ( R.Adjustable t m
                     , R.PostBuild t m
                     , MonadFix m
                     , R.MonadHold t m
-                    , Patchable (WithEmpty f)  -- for the listHold
+                    , Patchable (WithEmpty f)
                     , Functor (Diff f)
                     , MapLike (Diff f)
+                    , SequenceableC f a
                     , GCompare (FanKey f v))
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Maybe (f a)))
 listWithKeyMaybe fDyn widget = fmap withEmptyToMaybe <$> listWithKeyGeneral Empty (NonEmpty <$> fDyn) widget
@@ -157,6 +164,7 @@ listWithKeyGeneral :: forall t m f v a. ( R.Adjustable t m
                                         , R.MonadHold t m
                                         , MonadFix m
                                         , Patchable f
+                                        , SequenceableC f a
                                         , GCompare (FanKey f v))
   => f v -- an empty (f v)
   -> R.Dynamic t (f v)
@@ -181,9 +189,10 @@ list :: ( R.Adjustable t m
         , R.PostBuild t m
         , MonadFix m
         , R.MonadHold t m
-        , Patchable f  -- for the listHold
+        , Patchable f
         , Functor (Diff f)
         , Monoid (f v)
+        , SequenceableC f a        
         , GCompare (FanKey f v))
     => R.Dynamic t (f v) -> (R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
 list = listGeneral mempty
@@ -193,8 +202,9 @@ listMaybe :: ( R.Adjustable t m
              , R.PostBuild t m
              , MonadFix m
              , R.MonadHold t m
-             , Patchable (WithEmpty f)  -- for the listHold
+             , Patchable (WithEmpty f)
              , Functor (Diff f)
+             , SequenceableC f a
              , GCompare (FanKey f v))
   => R.Dynamic t (f v) -> (R.Dynamic t v -> m a) -> m (R.Dynamic t (Maybe (f a)))
 listMaybe fDyn widget = fmap withEmptyToMaybe <$> listGeneral Empty (NonEmpty <$> fDyn) widget
@@ -207,6 +217,7 @@ listGeneral :: ( R.Adjustable t m
                , R.MonadHold t m
                , Patchable f  -- for the listHold
                , Functor (Diff f)
+               , SequenceableC f a               
                , GCompare (FanKey f v))
   => f v -- must be empty
   -> R.Dynamic t (f v) -> (R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
@@ -222,6 +233,7 @@ listViewWithKey ::  ( R.Adjustable t m
                     , MonadFix m
                     , Mergeable f
                     , Monoid (f v)
+                    , SequenceableWithEventC t f a                           
                     , GCompare (FanKey f v))
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
 listViewWithKey = listViewWithKeyGeneral mempty
@@ -232,6 +244,7 @@ listViewWithKeyMaybe ::  ( R.Adjustable t m
                          , R.MonadHold t m
                          , MonadFix m
                          , Mergeable (WithEmpty f)
+                         , SequenceableWithEventC t f a                           
                          , GCompare (FanKey f v))
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
 listViewWithKeyMaybe fDyn widget = listViewWithKeyGeneral Empty (NonEmpty <$> fDyn) widget
@@ -244,6 +257,7 @@ listViewWithKeyGeneral ::  ( R.Adjustable t m
                            , R.MonadHold t m
                            , MonadFix m
                            , Mergeable f
+                           , SequenceableWithEventC t f a                           
                            , GCompare (FanKey f v))
   => f v -- must be empty
   -> R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
@@ -261,6 +275,7 @@ listWithKeyShallowDiff :: forall t m f v a.( R.Adjustable t m
                                            , R.MonadHold t m
                                            , Patchable f -- for the listHold
                                            , Functor (Diff f)
+                                           , SequenceableC f a                                           
                                            , GCompare (FanKey f v))
   => f v -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> R.Event t v -> m a) -> m (R.Dynamic t (f a))
 listWithKeyShallowDiff initialVals valsChanged mkChild = do
@@ -285,6 +300,7 @@ selectViewListWithKey :: ( R.Adjustable t m
                          , Mergeable f
                          , Functor (Diff f)
                          , Monoid (f v)
+                         , SequenceableWithEventC t f a
                          , GCompare (FanKey f v)
                          , Ord (Key f))
   => R.Dynamic t (Key f)          -- ^ Current selection key
@@ -301,6 +317,7 @@ selectViewListWithKeyMaybe :: ( R.Adjustable t m
                               , Mergeable (WithEmpty f)
                               , Functor (Diff f)
                               , MapLike (Diff f)
+                              , SequenceableWithEventC t f a
                               , GCompare (FanKey f v)
                               , Ord (Key f))
   => R.Dynamic t (Key f)          -- ^ Current selection key
@@ -313,9 +330,10 @@ selectViewListWithKeyGeneral :: ( R.Adjustable t m
                                 , MonadFix m
                                 , R.MonadHold t m
                                 , R.PostBuild t m
-                                , Foldable f -- for toList
+                                , Foldable f
                                 , Mergeable f
                                 , Functor (Diff f)
+                                , SequenceableWithEventC t f a
                                 , GCompare (FanKey f v)
                                 , Ord (Key f))
   => f v -- must be empty
@@ -336,14 +354,14 @@ selectViewListWithKeyGeneral emptyFV selection vals mkChild = do
 -- for the case when the widget function produces a (Dynamic t (g a)) and we are using the Maybe variant of these functions
 -- I would like to include the widget here so that the types show that the widget must return m (Dynamic t (g a)) but I can't get that to
 -- compile
-simplifyDynMaybe :: (R.Reflex t, R.MonadHold t m, Distributable f)
+simplifyDynMaybe :: (R.Reflex t, R.MonadHold t m, Distributable f, SequenceableC f b)
   => (v -> b)
   -> (R.Dynamic t (f v) -> m (R.Dynamic t (Maybe (f (R.Dynamic t b)))))
   -> R.Dynamic t (f v)
   -> m (R.Dynamic t (f b))
 simplifyDynMaybe toB collectionF fDyn = collectionF fDyn  >>= maybeHelper toB fDyn
 
-maybeHelper :: forall t m f v b. (R.Reflex t, R.MonadHold t m, Distributable f)
+maybeHelper :: forall t m f v b. (R.Reflex t, R.MonadHold t m, Distributable f, SequenceableC f b)
   => (v -> b) -> R.Dynamic t (f v) -> R.Dynamic t (Maybe (f (R.Dynamic t b))) -> m (R.Dynamic t (f b))
 maybeHelper toGA fDyn dynResult = do
   let y :: R.Dynamic t (Maybe (R.Dynamic t (f b))) = fmap distributeOverDynPure <$> dynResult
@@ -357,16 +375,16 @@ type ReflexC2 t m = (ReflexC1 t m, MonadFix m, R.PostBuild t m)
 -- Not sure if we need these but I think this might do the transitive inlining for at these types and I'm not sure the INLINABLE does that
 -- Most of the DMap ones refuse to specialize.  Is this a bad sign for optimization???
 -- THis is from the ForallF GCompare (Const2 k), I think.  So maybe quantified constraints will fix?
-{-# SPECIALIZE listHoldWithKey :: (ReflexC1 t m, Ord k) => Map k v -> R.Event t (Map k (Maybe v)) -> (k -> v -> m a) -> m (R.Dynamic t (Map k a)) #-}
-{-# SPECIALIZE listHoldWithKey :: (ReflexC1 t m, Hashable k, Ord k) => HashMap k v -> R.Event t (HashMap k (Maybe v)) -> (k -> v -> m a) -> m (R.Dynamic t (HashMap k a)) #-}
+{-# SPECIALIZE listHoldWithKey :: (ReflexC1 t m, Ord k, GCompare (Const2 k a)) => Map k v -> R.Event t (Map k (Maybe v)) -> (k -> v -> m a) -> m (R.Dynamic t (Map k a)) #-}
+{-# SPECIALIZE listHoldWithKey :: (ReflexC1 t m, Hashable k, Ord k, GCompare (Const2 k a)) => HashMap k v -> R.Event t (HashMap k (Maybe v)) -> (k -> v -> m a) -> m (R.Dynamic t (HashMap k a)) #-}
 {-# SPECIALIZE listHoldWithKey :: ReflexC1 t m => IntMap v -> R.Event t (IntMap (Maybe v)) -> (Int -> v -> m a) -> m (R.Dynamic t (IntMap a)) #-}
 {-# SPECIALIZE listHoldWithKey :: ReflexC1 t m => [v] -> R.Event t (IntMap (Maybe v)) -> (Int -> v -> m a) -> m (R.Dynamic t [a]) #-}
 {-# SPECIALIZE listHoldWithKey :: ReflexC1 t m => Seq v -> R.Event t (IntMap (Maybe v)) -> (Int -> v -> m a) -> m (R.Dynamic t (Seq a)) #-}
 {-# SPECIALIZE listHoldWithKey :: (ReflexC1 t m, Ix k, Enum k, Bounded k) => Array k v -> R.Event t (IntMap (Maybe v)) -> (k -> v -> m a) -> m (R.Dynamic t (Array k a)) #-}
 {-# SPECIALIZE listHoldWithKey :: ReflexC1 t m => Tree v -> R.Event t (Map (Seq Int) (Maybe v)) -> (Seq Int -> v -> m a) -> m (R.Dynamic t (Tree a)) #-}
 
---{-# SPECIALIZE listWithKey :: (ReflexC2 t m, Ord k) => R.Dynamic t (Map k v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Map k a)) #-}
---{-# SPECIALIZE listWithKey :: (ReflexC2 t m, Hashable k, Ord k) => R.Dynamic t (HashMap k v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (HashMap k a)) #-}
+{-# SPECIALIZE listWithKey :: (ReflexC2 t m, Ord k, GCompare (Const2 k a)) => R.Dynamic t (Map k v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Map k a)) #-}
+{-# SPECIALIZE listWithKey :: (ReflexC2 t m, Hashable k, Ord k, GCompare (Const2 k a)) => R.Dynamic t (HashMap k v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (HashMap k a)) #-}
 
 {-# SPECIALIZE listWithKey :: ReflexC2 t m => R.Dynamic t (IntMap v) -> (Int -> R.Dynamic t v -> m a) -> m (R.Dynamic t (IntMap a)) #-}
 {-# SPECIALIZE listWithKey :: ReflexC2 t m => R.Dynamic t [v] -> (Int -> R.Dynamic t v -> m a) -> m (R.Dynamic t [a]) #-}
@@ -375,22 +393,22 @@ type ReflexC2 t m = (ReflexC1 t m, MonadFix m, R.PostBuild t m)
 --{-# SPECIALIZE listWithKeyMaybe :: (Enum k, Bounded k, Ix k, ReflexC2 t m) => R.Dynamic t (Array k v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Maybe (Array k a))) #-}
 
 
---{-# SPECIALIZE listViewWithKey :: (ReflexC2 t m, Ord k) => R.Dynamic t (Map k v) -> (k -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Map k a)) #-}
---{-# SPECIALIZE listViewWithKey :: (ReflexC2 t m, Hashable k, Ord k) => R.Dynamic t (HashMap k v) -> (k -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (HashMap k a)) #
+{-# SPECIALIZE listViewWithKey :: (ReflexC2 t m, Ord k, GCompare (Const2 k a)) => R.Dynamic t (Map k v) -> (k -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Map k a)) #-}
+{-# SPECIALIZE listViewWithKey :: (ReflexC2 t m, Hashable k, Ord k, GCompare (Const2 k a)) => R.Dynamic t (HashMap k v) -> (k -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (HashMap k a)) #-}
 {-# SPECIALIZE listViewWithKey :: ReflexC2 t m => R.Dynamic t (IntMap v) -> (Int -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (IntMap a)) #-}
 {-# SPECIALIZE listViewWithKey :: ReflexC2 t m => R.Dynamic t [v] -> (Int -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (IntMap a)) #-}
 {-# SPECIALIZE listViewWithKey :: ReflexC2 t m => R.Dynamic t (Seq v) -> (Int -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (IntMap a)) #-}
 
 
---{-# SPECIALIZE listWithKeyShallowDiff :: (ReflexC2 t m, Ord k) => Map k v -> R.Event t (Map k (Maybe v)) -> (k -> v -> R.Event t v -> m a) -> m (R.Dynamic t (Map k a)) #-}
---{-# SPECIALIZE listWithKeyShallowDiff :: (ReflexC2 t m, Ord k, Hashable k) => HashMap k v -> R.Event t (HashMap k (Maybe v)) -> (k -> v -> R.Event t v -> m a) -> m (R.Dynamic t (HashMap k a)) #-}
+{-# SPECIALIZE listWithKeyShallowDiff :: (ReflexC2 t m, Ord k, GCompare (Const2 k a)) => Map k v -> R.Event t (Map k (Maybe v)) -> (k -> v -> R.Event t v -> m a) -> m (R.Dynamic t (Map k a)) #-}
+{-# SPECIALIZE listWithKeyShallowDiff :: (ReflexC2 t m, Ord k, Hashable k, GCompare (Const2 k a)) => HashMap k v -> R.Event t (HashMap k (Maybe v)) -> (k -> v -> R.Event t v -> m a) -> m (R.Dynamic t (HashMap k a)) #-}
 {-# SPECIALIZE listWithKeyShallowDiff :: ReflexC2 t m => IntMap v -> R.Event t (IntMap (Maybe v)) -> (Int -> v -> R.Event t v -> m a) -> m (R.Dynamic t (IntMap a)) #-}
 {-# SPECIALIZE listWithKeyShallowDiff :: ReflexC2 t m => [v] -> R.Event t (IntMap (Maybe v)) -> (Int -> v -> R.Event t v -> m a) -> m (R.Dynamic t [a]) #-}
 {-# SPECIALIZE listWithKeyShallowDiff :: ReflexC2 t m => Seq v -> R.Event t (IntMap (Maybe v)) -> (Int -> v -> R.Event t v -> m a) -> m (R.Dynamic t (Seq a)) #-}
 --{-# SPECIALIZE listWithKeyShallowDiff :: ReflexC2 t m => Tree v -> R.Event t (Map (Seq Int) (Maybe v)) -> (Seq Int -> v -> R.Event t v -> m a) -> m (R.Dynamic t (Tree a)) #-}
 
---{-# SPECIALIZE selectViewListWithKey :: (ReflexC2 t m, Ord k) => R.Dynamic t k -> R.Dynamic t (Map k v) -> (k -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (Map k a)) #-}
---{-# SPECIALIZE selectViewListWithKey :: (ReflexC2 t m, Ord k, Hashable k) => R.Dynamic t k -> R.Dynamic t (HashMap k v) -> (k -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (HashMap k a)) #-}
+{-# SPECIALIZE selectViewListWithKey :: (ReflexC2 t m, Ord k, GCompare (Const2 k a)) => R.Dynamic t k -> R.Dynamic t (Map k v) -> (k -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (Map k a)) #-}
+{-# SPECIALIZE selectViewListWithKey :: (ReflexC2 t m, Ord k, Hashable k, GCompare (Const2 k a)) => R.Dynamic t k -> R.Dynamic t (HashMap k v) -> (k -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (HashMap k a)) #-}
 {-# SPECIALIZE selectViewListWithKey :: ReflexC2 t m => R.Dynamic t Int -> R.Dynamic t (IntMap v) -> (Int -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (IntMap a)) #-}
 {-# SPECIALIZE selectViewListWithKey :: ReflexC2 t m => R.Dynamic t Int -> R.Dynamic t [v] -> (Int -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (IntMap a)) #-}
 {-# SPECIALIZE selectViewListWithKey :: ReflexC2 t m => R.Dynamic t Int -> R.Dynamic t (Seq v) -> (Int -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (IntMap a)) #-}

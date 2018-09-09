@@ -32,7 +32,8 @@ import           Reflex.Collections.Sequenceable    (DMapConst2 (..),
                                                      PatchDMapConst2 (..),
                                                      PatchSequenceable (..),
                                                      ReflexMergeable (..),
-                                                     ReflexSequenceable (..))
+                                                     ReflexSequenceable (..),
+                                                     SequenceC)
 
 
 import           Reflex.Collections.Diffable        (Diffable (..),
@@ -73,12 +74,12 @@ type Mergeable f = (Patchable f, ReflexMergeable (SeqType f))
 
 -- | Generalize distributeMapOverDynPure
 -- NB: Use of "unsafeFromSeqType" is okay here since we know there is a value for every key in the input
-distributeOverDynPure :: (R.Reflex t, Distributable f) => f (R.Dynamic t v) -> R.Dynamic t (f v)
+distributeOverDynPure :: (R.Reflex t, Distributable f, SequenceC (SeqType f) v) => f (R.Dynamic t v) -> R.Dynamic t (f v)
 distributeOverDynPure = fmap unsafeFromSeqType . sequenceDynamic . withFunctorToSeqType
 {-# INLINABLE distributeOverDynPure #-}
 
 -- | Generalizes "mergeMap" to anything with ToPatchType where the Patches are Sequenceable.
-mergeOver :: forall t f v. (R.Reflex t, Mergeable f) => f (R.Event t v) -> R.Event t (Diff f v)
+mergeOver :: forall t f v. (R.Reflex t, Mergeable f, SequenceC (SeqType f) v) => f (R.Event t v) -> R.Event t (Diff f v)
 mergeOver fEv =
   let id2 = const id :: (k -> R.Event t v -> R.Event t v)
   in fmap (fromSeqType (Proxy :: Proxy f)) . mergeEvents $ functorMappedToSeqType id2 fEv
