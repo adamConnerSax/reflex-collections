@@ -8,6 +8,7 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
+{-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 #ifdef USE_REFLEX_OPTIMIZER
 {-# OPTIONS_GHC -fplugin=Reflex.Optimizer #-}
@@ -30,17 +31,19 @@ import Reflex.Collections.ComposedIntMap ( ComposedIntMap(..)
 import           Data.Dependent.Map     (DMap, GCompare)
 import           Data.Functor.Misc      (Const2 (..))
 import           Control.Monad.Identity (Identity (..))
-import           Data.Kind              (Type)
+import           Data.Kind              (Type, Constraint)
 import qualified Data.IntMap            as IM
 import           Data.Functor.Compose   (Compose(..), getCompose)
 import           Data.Constraint ((:-)(Sub), Dict(Dict))
 import           Data.Constraint.Forall (ForallF, instF)
 
+type family SequenceC (c :: Type -> (Type -> Type) -> Type) (a :: Type) :: Constraint
+
 -- | This class carries the ability to do an efficient event merge
 -- "Merge a collection of events.  The resulting event will occur if at least one input event is occuring
 -- and will contain all simultaneously occurring events."
 class ReflexMergeable (f :: Type -> (Type -> Type) -> Type) where
-  mergeEvents :: R.Reflex t => f a (R.Event t) -> R.Event t (f a Identity)
+  mergeEvents :: (R.Reflex t, SequenceC f a) => f a (R.Event t) -> R.Event t (f a Identity)
 
 
 -- we lose some power by narrowing the classes below to the Const2 case.  We will need new instances
@@ -51,12 +54,19 @@ class ReflexMergeable (f :: Type -> (Type -> Type) -> Type) where
 newtype DMapConst2 k a f = DMapConst2  { unDMapConst2 :: DMap (Const2 k a) f }
 newtype PatchDMapConst2 k a f = PatchDMapConst2 { unPatchDMapConst2 :: PatchDMap (Const2 k a) f }
 
-instance (Ord k, ForallF GCompare (Const2 k)) => ReflexMergeable (DMapConst2 k) where
+
+type instance SequenceC (DMapConst2 k) a = GCompare (Const2 k a)
+type instance SequenceC (PatchDMapConst2 k) a = GCompare (Const2 k a)
+type instance SequenceC (ComposedIntMap) a = ()
+type instance SequenceC (ComposedPatchIntMap) a = ()
+
+
+instance (Ord k{-, ForallF GCompare (Const2 k)-}) => ReflexMergeable (DMapConst2 k) where
   {-# INLINABLE mergeEvents #-}
-  mergeEvents :: forall t a. R.Reflex t => DMapConst2 k a (R.Event t) -> R.Event t (DMapConst2 k a Identity)
-  mergeEvents =
-    case instF :: ForallF GCompare (Const2 k) :- GCompare (Const2 k a) of
-      Sub Dict -> fmap DMapConst2 . R.merge . unDMapConst2
+  mergeEvents :: forall t a. (R.Reflex t, GCompare (Const2 k a)) => DMapConst2 k a (R.Event t) -> R.Event t (DMapConst2 k a Identity)
+  mergeEvents = fmap DMapConst2 . R.merge . unDMapConst2
+{-    case instF :: ForallF GCompare (Const2 k) :- GCompare (Const2 k a) of
+      Sub Dict -> fmap DMapConst2 . R.merge . unDMapConst2-}
 
 instance ReflexMergeable ComposedIntMap where
   {-# INLINABLE mergeEvents #-}
