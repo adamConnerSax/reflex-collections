@@ -62,6 +62,7 @@ module Reflex.Collections.Collections
   , simplifyDynMaybe
   , maybeHelper
   , SequenceableC
+  , SequenceableWithEventC
 -- re-exports
   , mergeOver
   , distributeOverDynPure
