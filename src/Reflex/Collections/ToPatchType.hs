@@ -105,14 +105,16 @@ class SeqTypes (f :: Type -> Type) where
 
 class (KeyedCollection f, Diffable f) => ToPatchType (f :: Type -> Type) where
   type FanKey f :: Type -> Type -> Type -- NB: This is a key for a DMap since fan uses DMap
+  type EventSelector f :: Type -> Type -> Type 
   withFunctorToSeqType :: (SeqTypes f, Functor g) => f (g v) -> SeqType f v g
   fromSeqType :: Proxy f -> SeqType f a Identity -> Diff f a
   unsafeFromSeqType :: SeqType f a Identity -> f a -- may fail for some types if keys are missing
   makePatchSeq :: Functor g => Proxy f -> (Key f -> v -> g u) -> Diff f (Maybe v) -> SeqPatchType f u g
   makeFanKey :: Proxy f -> Proxy v -> Key f -> FanKey f v v
-  doFan :: (R.Reflex t, DM.GCompare (FanKey f v))=> R.Event t (f v) -> R.EventSelector t (FanKey f v)
-  diffToFanType :: Proxy f -> Diff f (Maybe v) -> DMap (FanKey f v) Identity
-  doDiffFan :: (R.Reflex t, DM.GCompare (FanKey f v)) => Proxy f -> R.Event t (Diff f (Maybe v)) -> R.EventSelector t (FanKey f v)
+  doFan :: (R.Reflex t, DM.GCompare (FanKey f v))=> R.Event t (f v) -> EventSelector t (FanKey f v)
+  doSelect :: 
+  diffToFanType :: Proxy f -> Diff f (Maybe v) -> SeqType f v Identity
+  doDiffFan :: (R.Reflex t, DM.GCompare (FanKey f v)) => Proxy f -> R.Event t (Diff f (Maybe v)) -> EventSelector t (FanKey f v)
   doDiffFan pf = R.fan . fmap (diffToFanType pf)
 
 -- Map, HashMap and Tree use DMap for merging and sequencing
