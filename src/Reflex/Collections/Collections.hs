@@ -63,6 +63,7 @@ module Reflex.Collections.Collections
   , maybeHelper
   , SequenceableC
   , SequenceableWithEventC
+  , FannableC
 -- re-exports
   , mergeOver
   , distributeOverDynPure
@@ -73,7 +74,6 @@ module Reflex.Collections.Collections
   , Distributable
   , Mergeable
   , GCompare
-  , FanKey
   , SeqTypes
   , WithEmpty
   ) where
@@ -114,6 +114,7 @@ import           Data.Tree                          (Tree)
 -- we could use Data.Constraint to do it, but that's messy as well since we'd need to unwrap the dictionaries at the call site.
 
 type SequenceableC f v = (SequenceC (SeqType f) v, SequenceC (SeqPatchType f) v)
+type FannableC f v = SequenceC (SeqType f) v
 type SequenceableWithEventC t f v = (SequenceableC f v, SequenceableC f (R.Event t v))
 
 -- | listHoldWithKey is an efficient collection management function when your input is a *static* initial state and an event stream of updates.
@@ -142,7 +143,7 @@ listWithKey :: ( R.Adjustable t m
                , Monoid (f v)
                , Functor (Diff f)
                , SequenceableC f a
-               , GCompare (FanKey f v))
+               , FannableC f v)
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
 listWithKey = listWithKeyGeneral mempty
 {-# INLINABLE listWithKey #-}
@@ -155,7 +156,7 @@ listWithKeyMaybe :: ( R.Adjustable t m
                     , Functor (Diff f)
                     , MapLike (Diff f)
                     , SequenceableC f a
-                    , GCompare (FanKey f v))
+                    , FannableC f v)
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Maybe (f a)))
 listWithKeyMaybe fDyn widget = fmap withEmptyToMaybe <$> listWithKeyGeneral Empty (NonEmpty <$> fDyn) widget
 {-# INLINABLE listWithKeyMaybe #-}
@@ -166,16 +167,14 @@ listWithKeyGeneral :: forall t m f v a. ( R.Adjustable t m
                                         , MonadFix m
                                         , Patchable f
                                         , SequenceableC f a
-                                        , GCompare (FanKey f v))
+                                        , FannableC f v)
   => f v -- an empty (f v)
   -> R.Dynamic t (f v)
   -> (Key f -> R.Dynamic t v -> m a)
   -> m (R.Dynamic t (f a))
 listWithKeyGeneral emptyFV vals mkChild = do
   postBuild <- R.getPostBuild
-  let doFan' = doFan
-      makeFanKey' = makeFanKey (Proxy :: Proxy f) (Proxy :: Proxy v)
-      childValChangedSelector = doFan' $ R.updated vals
+  let childValChangedSelector = fanCollection $ R.updated vals
   rec sentVals :: R.Dynamic t (f v) <- R.foldDyn applyDiff emptyFV changeVals
       let changeVals :: R.Event t (Diff f (Maybe v))
           changeVals = R.attachWith diffOnlyKeyChanges (R.current sentVals) $ R.leftmost
@@ -183,7 +182,7 @@ listWithKeyGeneral emptyFV vals mkChild = do
                        , R.tag (R.current vals) postBuild
                        ]
   listHoldWithKey emptyFV changeVals $ \k v ->
-    mkChild k =<< R.holdDyn v (R.select childValChangedSelector $ makeFanKey' k)
+    mkChild k =<< R.holdDyn v (selectCollection (Proxy :: Proxy f) childValChangedSelector k)
 {-# INLINABLE listWithKeyGeneral #-}
 
 list :: ( R.Adjustable t m
@@ -193,8 +192,8 @@ list :: ( R.Adjustable t m
         , Patchable f
         , Functor (Diff f)
         , Monoid (f v)
-        , SequenceableC f a        
-        , GCompare (FanKey f v))
+        , FannableC f v
+        , SequenceableC f a)
     => R.Dynamic t (f v) -> (R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
 list = listGeneral mempty
 {-# INLINABLE list #-}
@@ -206,7 +205,7 @@ listMaybe :: ( R.Adjustable t m
              , Patchable (WithEmpty f)
              , Functor (Diff f)
              , SequenceableC f a
-             , GCompare (FanKey f v))
+             , FannableC f v)
   => R.Dynamic t (f v) -> (R.Dynamic t v -> m a) -> m (R.Dynamic t (Maybe (f a)))
 listMaybe fDyn widget = fmap withEmptyToMaybe <$> listGeneral Empty (NonEmpty <$> fDyn) widget
 {-# INLINABLE listMaybe #-}
@@ -218,8 +217,8 @@ listGeneral :: ( R.Adjustable t m
                , R.MonadHold t m
                , Patchable f  -- for the listHold
                , Functor (Diff f)
-               , SequenceableC f a               
-               , GCompare (FanKey f v))
+               , SequenceableC f a
+               , FannableC f v)
   => f v -- must be empty
   -> R.Dynamic t (f v) -> (R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
 listGeneral emptyFV fDyn mkChild = listWithKeyGeneral emptyFV fDyn (\_ dv -> mkChild dv)
@@ -234,8 +233,8 @@ listViewWithKey ::  ( R.Adjustable t m
                     , MonadFix m
                     , Mergeable f
                     , Monoid (f v)
-                    , SequenceableWithEventC t f a                           
-                    , GCompare (FanKey f v))
+                    , FannableC f v
+                    , SequenceableWithEventC t f a)
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
 listViewWithKey = listViewWithKeyGeneral mempty
 {-# INLINABLE listViewWithKey #-}
@@ -245,8 +244,8 @@ listViewWithKeyMaybe ::  ( R.Adjustable t m
                          , R.MonadHold t m
                          , MonadFix m
                          , Mergeable (WithEmpty f)
-                         , SequenceableWithEventC t f a                           
-                         , GCompare (FanKey f v))
+                         , FannableC f v
+                         , SequenceableWithEventC t f a)
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
 listViewWithKeyMaybe fDyn widget = listViewWithKeyGeneral Empty (NonEmpty <$> fDyn) widget
 {-# INLINABLE listViewWithKeyMaybe #-}
@@ -258,8 +257,8 @@ listViewWithKeyGeneral ::  ( R.Adjustable t m
                            , R.MonadHold t m
                            , MonadFix m
                            , Mergeable f
-                           , SequenceableWithEventC t f a                           
-                           , GCompare (FanKey f v))
+                           , FannableC f v
+                           , SequenceableWithEventC t f a)
   => f v -- must be empty
   -> R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
 listViewWithKeyGeneral emptyFV vals mkChild =
@@ -276,17 +275,15 @@ listWithKeyShallowDiff :: forall t m f v a.( R.Adjustable t m
                                            , R.MonadHold t m
                                            , Patchable f -- for the listHold
                                            , Functor (Diff f)
-                                           , SequenceableC f a                                           
-                                           , GCompare (FanKey f v))
+                                           , FannableC f v
+                                           , SequenceableC f a)
   => f v -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> R.Event t v -> m a) -> m (R.Dynamic t (f a))
 listWithKeyShallowDiff initialVals valsChanged mkChild = do
-  let makeFanKey' = makeFanKey (Proxy :: Proxy f) (Proxy :: Proxy v)
-      fanDiff' = doDiffFan (Proxy :: Proxy f)
-      editDiffLeavingDeletes' = editDiffLeavingDeletes (Proxy :: Proxy f)
-      childValChangedSelector = fanDiff' valsChanged
+  let editDiffLeavingDeletes' = editDiffLeavingDeletes (Proxy :: Proxy f)
+      childValChangedSelector = fanDiffMaybe (Proxy :: Proxy f) valsChanged
   sentVals <- R.foldDyn applyDiff (void initialVals) $ fmap (fmap void) valsChanged
   listHoldWithKey initialVals (R.attachWith (flip editDiffLeavingDeletes') (toDiff <$> R.current sentVals) valsChanged) $ \k v ->
-    mkChild k v $ R.select childValChangedSelector $ makeFanKey' k
+    mkChild k v $ selectCollection (Proxy :: Proxy f) childValChangedSelector k
 {-# INLINABLE listWithKeyShallowDiff #-}
 
 -- | Create a dynamically-changing set of widgets, one of which is selected at any time.
@@ -301,8 +298,8 @@ selectViewListWithKey :: ( R.Adjustable t m
                          , Mergeable f
                          , Functor (Diff f)
                          , Monoid (f v)
+                         , FannableC f v
                          , SequenceableWithEventC t f a
-                         , GCompare (FanKey f v)
                          , Ord (Key f))
   => R.Dynamic t (Key f)          -- ^ Current selection key
   -> R.Dynamic t (f v)      -- ^ Dynamic container of values
@@ -318,8 +315,8 @@ selectViewListWithKeyMaybe :: ( R.Adjustable t m
                               , Mergeable (WithEmpty f)
                               , Functor (Diff f)
                               , MapLike (Diff f)
+                              , FannableC f v
                               , SequenceableWithEventC t f a
-                              , GCompare (FanKey f v)
                               , Ord (Key f))
   => R.Dynamic t (Key f)          -- ^ Current selection key
   -> R.Dynamic t (f v)      -- ^ Dynamic container of values
@@ -334,8 +331,8 @@ selectViewListWithKeyGeneral :: ( R.Adjustable t m
                                 , Foldable f
                                 , Mergeable f
                                 , Functor (Diff f)
+                                , FannableC f v
                                 , SequenceableWithEventC t f a
-                                , GCompare (FanKey f v)
                                 , Ord (Key f))
   => f v -- must be empty
   -> R.Dynamic t (Key f)          -- ^ Current selection key

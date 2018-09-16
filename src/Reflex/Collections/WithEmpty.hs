@@ -73,7 +73,8 @@ instance SeqTypes f => SeqTypes (WithEmpty f) where
 -- Without it, GHC cannot resolve the SeqTypes f v constraint.  Which it needs to call typeclass methods in `SeqTypes (With f) v`
 -- This will all be much nicer with quantified constraints.
 instance (MapLike (Diff f), ToPatchType f, SeqTypes f) => ToPatchType (WithEmpty f) where
-  type FanKey (WithEmpty f) = FanKey f
+--  type FanKey (WithEmpty f) = FanKey f
+  type CollectionEventSelector (WithEmpty f) = CollectionEventSelector f
   {-# INLINABLE withFunctorToSeqType #-}
   withFunctorToSeqType (Empty :: WithEmpty f (g v))  = emptySeq (Proxy :: Proxy (WithEmpty f)) (Proxy :: Proxy v) (Proxy :: Proxy (g :: Type -> Type))
   withFunctorToSeqType (NonEmpty t :: WithEmpty f (g v)) = withFunctorToSeqType t
@@ -85,13 +86,14 @@ instance (MapLike (Diff f), ToPatchType f, SeqTypes f) => ToPatchType (WithEmpty
   unsafeFromSeqType = go where
     go :: forall a. SeqType (WithEmpty f) a Identity -> (WithEmpty f) a   -- a signature required here to scope the 'a'
     go x = if nullSeq (Proxy :: Proxy (WithEmpty f)) (Proxy :: Proxy a) x then Empty else NonEmpty $ unsafeFromSeqType x
-  {-# INLINABLE makeFanKey #-}  
-  makeFanKey _ pv = makeFanKey (Proxy :: Proxy f) pv
-  {-# INLINABLE doFan #-}  
-  doFan =  doFan . fmapMaybe withEmptyToMaybe  
-  {-# INLINABLE diffToFanType #-}  
-  diffToFanType _ = diffToFanType (Proxy :: Proxy f)
-
+--  {-# INLINABLE makeFanKey #-}  
+--  makeFanKey _ pv = makeFanKey (Proxy :: Proxy f) pv
+  {-# INLINABLE fanCollection #-}
+  fanCollection = fanCollection . fmapMaybe withEmptyToMaybe 
+  {-# INLINABLE selectCollection #-}
+  selectCollection _ es k = selectCollection (Proxy :: Proxy f) es k
+  {-# INLINABLE fanDiffMaybe #-}
+  fanDiffMaybe _ = fanDiffMaybe (Proxy :: Proxy f)
   
 
   

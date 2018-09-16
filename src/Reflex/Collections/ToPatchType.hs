@@ -101,21 +101,24 @@ class SeqTypes (f :: Type -> Type) where
 -- that are sequenceable, and then bring the original type back
 -- This requires that the Diff type be mapped to the correct type for diffing at the sequenceable level (e.g., as a DMap).
 -- I think, if we had quantified constraints, we could add (forall v. GCompare (FanSelectKey f v)) here and it would be simpler.
--- might be able to do it now with Data.Constraint.Forall but that would propagate complication
-
 class (KeyedCollection f, Diffable f) => ToPatchType (f :: Type -> Type) where
-  type FanKey f :: Type -> Type -> Type -- NB: This is a key for a DMap since fan uses DMap
-  type EventSelector f :: Type -> Type -> Type 
+--  type FanKey f :: Type -> Type -> Type -- NB: This is a key for a DMap since fan uses DMap
+  type CollectionEventSelector f :: Type -> Type -> Type
   withFunctorToSeqType :: (SeqTypes f, Functor g) => f (g v) -> SeqType f v g
   fromSeqType :: Proxy f -> SeqType f a Identity -> Diff f a
   unsafeFromSeqType :: SeqType f a Identity -> f a -- may fail for some types if keys are missing
   makePatchSeq :: Functor g => Proxy f -> (Key f -> v -> g u) -> Diff f (Maybe v) -> SeqPatchType f u g
-  makeFanKey :: Proxy f -> Proxy v -> Key f -> FanKey f v v
-  doFan :: (R.Reflex t, DM.GCompare (FanKey f v))=> R.Event t (f v) -> EventSelector t (FanKey f v)
-  doSelect :: 
-  diffToFanType :: Proxy f -> Diff f (Maybe v) -> SeqType f v Identity
-  doDiffFan :: (R.Reflex t, DM.GCompare (FanKey f v)) => Proxy f -> R.Event t (Diff f (Maybe v)) -> EventSelector t (FanKey f v)
-  doDiffFan pf = R.fan . fmap (diffToFanType pf)
+--  makeFanKey :: Proxy f -> Proxy v -> Key f -> FanKey f v v
+  fanCollection :: (R.Reflex t, SequenceC (SeqType f) v) => R.Event t (f v) -> CollectionEventSelector f t v
+  selectCollection :: (R.Reflex t, SequenceC (SeqType f) v) => Proxy f -> CollectionEventSelector f t v -> Key f -> R.Event t v 
+--  diffMaybeToFanType :: Proxy f -> Diff f (Maybe v) -> SeqType f v Identity
+  fanDiffMaybe :: (R.Reflex t, SequenceC (SeqType f) v) => Proxy f -> R.Event t (Diff f (Maybe v)) -> CollectionEventSelector f t v
+--  doDiffFan pf = R.fan . fmap (diffToFanType pf)
+
+
+newtype DMapConst2EventSelector k t a =
+  DMapConst2EventSelector { unDMapConst2EventSelector :: R.EventSelector t (Const2 k a)}
+
 
 -- Map, HashMap and Tree use DMap for merging and sequencing
 
@@ -126,7 +129,8 @@ instance Ord k => SeqTypes (Map k) where
   nullSeq _ _ = DM.null . unDMapConst2
 
 instance Ord k => ToPatchType (Map k) where
-  type FanKey (Map k) = Const2 k
+--  type FanKey (Map k) = Const2 k
+  type CollectionEventSelector (Map k) = DMapConst2EventSelector k
   {-# INLINABLE withFunctorToSeqType #-}
   withFunctorToSeqType = DMapConst2 . mapWithFunctorToDMap
   {-# INLINABLE makePatchSeq #-}
@@ -136,12 +140,14 @@ instance Ord k => ToPatchType (Map k) where
   fromSeqType _ = dmapToMap . unDMapConst2
   {-# INLINABLE unsafeFromSeqType #-}
   unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy (Map k))
-  {-# INLINABLE makeFanKey #-}
-  makeFanKey _ _ = Const2
-  {-# INLINABLE doFan #-}
-  doFan =  R.fan . fmap mapToDMap
-  {-# INLINABLE diffToFanType #-}
-  diffToFanType _ = keyedCollectionToDMap . mlMapMaybe id
+--  {-# INLINABLE makeFanKey #-}
+--  makeFanKey _ _ = Const2
+  {-# INLINABLE fanCollection #-}
+  fanCollection =  DMapConst2EventSelector . R.fan . fmap mapToDMap
+  {-# INLINABLE selectCollection #-}
+  selectCollection _ es k = R.select (unDMapConst2EventSelector es) $ Const2 k 
+  {-# INLINABLE fanDiffMaybe #-}
+  fanDiffMaybe _ = DMapConst2EventSelector . R.fan . fmap (keyedCollectionToDMap . mlMapMaybe id)
 
 instance Ord k => SeqTypes (HashMap k) where
   type SeqType (HashMap k) = DMapConst2 k
@@ -150,7 +156,8 @@ instance Ord k => SeqTypes (HashMap k) where
   nullSeq _ _ = DM.null . unDMapConst2
 
 instance (Ord k, Eq k, Hashable k) => ToPatchType (HashMap k) where
-  type FanKey (HashMap k) = Const2 k
+--  type FanKey (HashMap k) = Const2 k
+  type CollectionEventSelector (HashMap k) = DMapConst2EventSelector k
   {-# INLINABLE withFunctorToSeqType #-}
   withFunctorToSeqType = DMapConst2 . keyedCollectionWithFunctorToDMap
   {-# INLINABLE makePatchSeq #-}
@@ -160,13 +167,15 @@ instance (Ord k, Eq k, Hashable k) => ToPatchType (HashMap k) where
   fromSeqType _ = dmapToKeyedCollection . unDMapConst2
   {-# INLINABLE unsafeFromSeqType #-}
   unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy (HashMap k))
-  {-# INLINABLE makeFanKey #-}
-  makeFanKey _ _ = Const2
-  {-# INLINABLE doFan #-}
-  doFan =  R.fan . fmap keyedCollectionToDMap
-  {-# INLINABLE diffToFanType #-}
-  diffToFanType _ = keyedCollectionToDMap . mlMapMaybe id
-
+--  {-# INLINABLE makeFanKey #-}
+--  makeFanKey _ _ = Const2
+  {-# INLINABLE fanCollection #-}
+  fanCollection =  DMapConst2EventSelector . R.fan . fmap keyedCollectionToDMap
+  {-# INLINABLE selectCollection #-}
+  selectCollection _ es k = R.select (unDMapConst2EventSelector es) $ Const2 k 
+  {-# INLINABLE fanDiffMaybe #-}
+  fanDiffMaybe _ = DMapConst2EventSelector . R.fan . fmap (keyedCollectionToDMap . mlMapMaybe id)
+  
 instance SeqTypes Tree where
   type SeqType Tree = DMapConst2 (S.Seq Int)
   type SeqPatchType Tree = PatchDMapConst2 (S.Seq Int)
@@ -174,7 +183,8 @@ instance SeqTypes Tree where
   nullSeq _ _ = DM.null . unDMapConst2
 
 instance ToPatchType Tree where
-  type FanKey Tree = Const2 (S.Seq Int)
+--  type FanKey Tree = Const2 (S.Seq Int)
+  type CollectionEventSelector Tree = DMapConst2EventSelector (S.Seq Int)
   {-# INLINABLE withFunctorToSeqType #-}
   withFunctorToSeqType = DMapConst2 . keyedCollectionWithFunctorToDMap
   {-# INLINABLE makePatchSeq #-}
@@ -184,12 +194,14 @@ instance ToPatchType Tree where
   fromSeqType _ = dmapToKeyedCollection . unDMapConst2
   {-# INLINABLE unsafeFromSeqType #-}
   unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy Tree)
-  {-# INLINABLE makeFanKey #-}
-  makeFanKey _ _ = Const2
-  {-# INLINABLE doFan #-}
-  doFan =  R.fan . fmap keyedCollectionToDMap
-  {-# INLINABLE diffToFanType #-}
-  diffToFanType _ = keyedCollectionToDMap . mlMapMaybe id
+--  {-# INLINABLE makeFanKey #-}
+--  makeFanKey _ _ = Const2
+  {-# INLINABLE fanCollection #-}
+  fanCollection =  DMapConst2EventSelector . R.fan . fmap keyedCollectionToDMap
+  {-# INLINABLE selectCollection #-}
+  selectCollection _ es k = R.select (unDMapConst2EventSelector es) $ Const2 k 
+  {-# INLINABLE fanDiffMaybe #-}
+  fanDiffMaybe _ = DMapConst2EventSelector . R.fan . fmap (keyedCollectionToDMap . mlMapMaybe id)
 
 -- IntMap, [], Seq, and Array use IntMap for their merging and sequencing
 
@@ -199,7 +211,8 @@ instance SeqTypes IntMap where
   nullSeq _ _ (ComposedIntMap cim) = IM.null $ getCompose cim
 
 instance ToPatchType IntMap where
-  type FanKey IntMap = Const2 Int
+--  type FanKey IntMap = Const2 Int
+  type CollectionEventSelector IntMap = R.EventSelectorInt
   {-# INLINABLE withFunctorToSeqType #-}
   withFunctorToSeqType = ComposedIntMap . Compose
   {-# INLINABLE fromSeqType #-}
@@ -209,12 +222,14 @@ instance ToPatchType IntMap where
   {-# INLINABLE makePatchSeq #-}
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv))
-  {-# INLINABLE makeFanKey #-}
-  makeFanKey _ _ = Const2
-  {-# INLINABLE doFan #-}
-  doFan = R.fan . fmap intMapToDMap
-  {-# INLINABLE diffToFanType #-}
-  diffToFanType _ = intMapToDMap . mlMapMaybe id
+--  {-# INLINABLE makeFanKey #-}
+--  makeFanKey _ _ = Const2
+  {-# INLINABLE fanCollection #-}
+  fanCollection = R.fanInt
+  {-# INLINABLE selectCollection #-}
+  selectCollection _ es n = R.selectInt es n 
+  {-# INLINABLE fanDiffMaybe #-}
+  fanDiffMaybe _ = R.fanInt . fmap (mlMapMaybe id)
 
 instance SeqTypes [] where
   type SeqType [] = ComposedIntMap
@@ -222,7 +237,8 @@ instance SeqTypes [] where
   nullSeq _ _ (ComposedIntMap cim) = IM.null $ getCompose cim
 
 instance ToPatchType [] where
-  type FanKey [] = Const2 Int
+--  type FanKey [] = Const2 Int
+  type CollectionEventSelector [] = R.EventSelectorInt
   {-# INLINABLE withFunctorToSeqType #-}
   withFunctorToSeqType = ComposedIntMap . Compose . IM.fromAscList . zip [0..]
   {-# INLINABLE fromSeqType #-}
@@ -232,12 +248,14 @@ instance ToPatchType [] where
   {-# INLINABLE makePatchSeq #-}
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv))
-  {-# INLINABLE makeFanKey #-}
-  makeFanKey _ _ = Const2
-  {-# INLINABLE doFan #-}
-  doFan = R.fan . fmap (DM.fromAscList . fmap (\(n,v) -> Const2 n :=> Identity v) . zip [0..])
-  {-# INLINABLE diffToFanType #-}
-  diffToFanType _ = intMapToDMap . mlMapMaybe id
+--  {-# INLINABLE makeFanKey #-}
+--  makeFanKey _ _ = Const2
+  {-# INLINABLE fanCollection #-}
+  fanCollection = R.fanInt . fmap (IM.fromAscList . zip [0..])
+  {-# INLINABLE selectCollection #-}
+  selectCollection _ es n = R.selectInt es n 
+  {-# INLINABLE fanDiffMaybe #-}
+  fanDiffMaybe _ = R.fanInt . fmap (IM.mapMaybe id)
 
 instance SeqTypes S.Seq where
   type SeqType S.Seq = ComposedIntMap
@@ -245,7 +263,8 @@ instance SeqTypes S.Seq where
   nullSeq _ _ (ComposedIntMap cim) = IM.null $ getCompose cim
 
 instance ToPatchType S.Seq where
-  type FanKey S.Seq = Const2 Int
+--  type FanKey S.Seq = Const2 Int
+  type CollectionEventSelector S.Seq = R.EventSelectorInt
   {-# INLINABLE withFunctorToSeqType #-}
   withFunctorToSeqType = ComposedIntMap . Compose . IM.fromAscList . zip [0..] . F.toList
   {-# INLINABLE fromSeqType #-}
@@ -255,12 +274,14 @@ instance ToPatchType S.Seq where
   {-# INLINABLE makePatchSeq #-}
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> fmap (h n) mv)
-  {-# INLINABLE makeFanKey #-}
-  makeFanKey _ _ = Const2
-  {-# INLINABLE doFan #-}
-  doFan = R.fan . fmap (DM.fromAscList . fmap (\(n,v) -> Const2 n :=> Identity v) . zip [0..] . F.toList)
-  {-# INLINABLE diffToFanType #-}
-  diffToFanType _ = intMapToDMap . mlMapMaybe id
+--  {-# INLINABLE makeFanKey #-}
+--  makeFanKey _ _ = Const2
+  {-# INLINABLE fanCollection #-}
+  fanCollection = R.fanInt . fmap (IM.fromAscList . zip [0..] . F.toList)
+  {-# INLINABLE selectCollection #-}
+  selectCollection _ es n = R.selectInt es n 
+  {-# INLINABLE fanDiffMaybe #-}
+  fanDiffMaybe _ = R.fanInt . fmap (IM.mapMaybe id . IM.fromAscList . zip [0..] . F.toList)
 
 -- this only works for an array which has an element for every value of the key
 -- could be made slightly more general, getting the ints from position in a larger set
@@ -273,7 +294,8 @@ instance SeqTypes (Array k) where
   nullSeq _ _ (ComposedIntMap cim) = IM.null $ getCompose cim
 
 instance (Enum k, Bounded k, Ix k) => ToPatchType (Array k) where
-  type FanKey (Array k) = Const2 k
+--  type FanKey (Array k) = Const2 k
+  type CollectionEventSelector (A.Array k) = R.EventSelectorInt
   {-# INLINABLE withFunctorToSeqType #-}
   withFunctorToSeqType = ComposedIntMap . Compose . IM.fromAscList . zip [0..] . fmap snd . A.assocs
   {-# INLINABLE fromSeqType #-}
@@ -283,12 +305,14 @@ instance (Enum k, Bounded k, Ix k) => ToPatchType (Array k) where
   {-# INLINABLE makePatchSeq #-}
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> fmap (h $ toEnum n) mv) -- IM.fromAscList . zip [0..] . fmap (\(k,v) -> Just $ h k v)
-  {-# INLINABLE makeFanKey #-}
-  makeFanKey _ _  = Const2
-  {-# INLINABLE doFan #-}
-  doFan = R.fan . fmap keyedCollectionToDMap
-  {-# INLINABLE diffToFanType #-}
-  diffToFanType _ = intMapToDMapWithKey toEnum . mlMapMaybe id
+--  {-# INLINABLE makeFanKey #-}
+--  makeFanKey _ _  = Const2
+  {-# INLINABLE fanCollection #-}
+  fanCollection = R.fanInt . fmap (IM.fromAscList . zip [0..] . fmap snd . A.assocs)
+  {-# INLINABLE selectCollection #-}
+  selectCollection _ es k = R.selectInt es (fromEnum k) 
+  {-# INLINABLE fanDiffMaybe #-}
+  fanDiffMaybe _ = R.fanInt . fmap (IM.mapMaybe id)
 
 -- various utilities for converting to and from underlying Patchable types
 
