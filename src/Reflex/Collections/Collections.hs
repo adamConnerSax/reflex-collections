@@ -125,10 +125,8 @@ type SequenceableWithEventC t f v = (SequenceableC f v, SequenceableC f (R.Event
 listHoldWithKey :: forall t m f v a. (R.Adjustable t m, R.MonadHold t m, Patchable f, SequenceableC f a)
   => f v -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> m a) -> m (R.Dynamic t (f a))
 listHoldWithKey c0 c' h = do
-  let pf = Proxy :: Proxy f
-      makePatchSeq' = makePatchSeq pf
-      dc0 = functorMappedToSeqType h c0
-      dc' = fmap (makePatchSeq' h) c'
+  let dc0 = functorMappedToSeqType h c0
+      dc' = fmap (makePatchSeq (Proxy :: Proxy f) h) c'
   (a0 ,a') <- sequenceWithPatch dc0 dc'
   fmap unsafeFromSeqType <$> patchPairToDynamic a0 a'
 {-# INLINABLE listHoldWithKey #-}
@@ -334,7 +332,7 @@ selectViewListWithKeyGeneral :: ( R.Adjustable t m
                                 , FannableC f v
                                 , SequenceableWithEventC t f a
                                 , Ord (Key f))
-  => f v -- must be empty
+  => f v -- ^ empty container
   -> R.Dynamic t (Key f)          -- ^ Current selection key
   -> R.Dynamic t (f v)      -- ^ Dynamic container of values
   -> (Key f -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -- ^ Function to create a widget for a given key from Dynamic value and Dynamic Bool indicating if this widget is currently selected
@@ -367,12 +365,8 @@ maybeHelper toGA fDyn dynResult = do
   fmap join $ R.holdDyn (fmap toGA <$> fDyn) newFGEv
 
 type ReflexC1 t m = (R.Adjustable t m, R.MonadHold t m)
-type ReflexC2 t m = (ReflexC1 t m, MonadFix m, R.PostBuild t m)
 
-
--- Not sure if we need these but I think this might do the transitive inlining for at these types and I'm not sure the INLINABLE does that
--- Most of the DMap ones refuse to specialize.  Is this a bad sign for optimization???
--- THis is from the ForallF GCompare (Const2 k), I think.  So maybe quantified constraints will fix?
+-- Not sure if we need these but I think this might do the transitive inlining for these types and I'm not sure the INLINABLE does that
 {-# SPECIALIZE listHoldWithKey :: (ReflexC1 t m, Ord k, GCompare (Const2 k a)) => Map k v -> R.Event t (Map k (Maybe v)) -> (k -> v -> m a) -> m (R.Dynamic t (Map k a)) #-}
 {-# SPECIALIZE listHoldWithKey :: (ReflexC1 t m, Hashable k, Ord k, GCompare (Const2 k a)) => HashMap k v -> R.Event t (HashMap k (Maybe v)) -> (k -> v -> m a) -> m (R.Dynamic t (HashMap k a)) #-}
 {-# SPECIALIZE listHoldWithKey :: ReflexC1 t m => IntMap v -> R.Event t (IntMap (Maybe v)) -> (Int -> v -> m a) -> m (R.Dynamic t (IntMap a)) #-}
@@ -381,14 +375,17 @@ type ReflexC2 t m = (ReflexC1 t m, MonadFix m, R.PostBuild t m)
 {-# SPECIALIZE listHoldWithKey :: (ReflexC1 t m, Ix k, Enum k, Bounded k) => Array k v -> R.Event t (IntMap (Maybe v)) -> (k -> v -> m a) -> m (R.Dynamic t (Array k a)) #-}
 {-# SPECIALIZE listHoldWithKey :: ReflexC1 t m => Tree v -> R.Event t (Map (Seq Int) (Maybe v)) -> (Seq Int -> v -> m a) -> m (R.Dynamic t (Tree a)) #-}
 
-{-# SPECIALIZE listWithKey :: (ReflexC2 t m, Ord k, GCompare (Const2 k a)) => R.Dynamic t (Map k v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Map k a)) #-}
+-- These are failing to specialize with a "RULE lhs to complex to desugar" message. :(
+{-
+type ReflexC2 t m = (ReflexC1 t m, MonadFix m, R.PostBuild t m)
+{-# SPECIALIZE listWithKey :: (ReflexC2 t m, Ord k, GCompare (Const2 k a),GCompare (Const2 k v)) => R.Dynamic t (Map k v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Map k a)) #-}
 {-# SPECIALIZE listWithKey :: (ReflexC2 t m, Hashable k, Ord k, GCompare (Const2 k a)) => R.Dynamic t (HashMap k v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (HashMap k a)) #-}
 
 {-# SPECIALIZE listWithKey :: ReflexC2 t m => R.Dynamic t (IntMap v) -> (Int -> R.Dynamic t v -> m a) -> m (R.Dynamic t (IntMap a)) #-}
 {-# SPECIALIZE listWithKey :: ReflexC2 t m => R.Dynamic t [v] -> (Int -> R.Dynamic t v -> m a) -> m (R.Dynamic t [a]) #-}
 {-# SPECIALIZE listWithKey :: ReflexC2 t m => R.Dynamic t (Seq v) -> (Int -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Seq a)) #-}
---{-# SPECIALIZE listWithKeyMaybe :: ReflexC2 t m => R.Dynamic t (Tree v) -> (Seq Int -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Maybe (Tree a))) #-}
---{-# SPECIALIZE listWithKeyMaybe :: (Enum k, Bounded k, Ix k, ReflexC2 t m) => R.Dynamic t (Array k v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Maybe (Array k a))) #-}
+{-# SPECIALIZE listWithKeyMaybe :: ReflexC2 t m => R.Dynamic t (Tree v) -> (Seq Int -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Maybe (Tree a))) #-}
+{-# SPECIALIZE listWithKeyMaybe :: (Enum k, Bounded k, Ix k, ReflexC2 t m) => R.Dynamic t (Array k v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Maybe (Array k a))) #-}
 
 
 {-# SPECIALIZE listViewWithKey :: (ReflexC2 t m, Ord k, GCompare (Const2 k a)) => R.Dynamic t (Map k v) -> (k -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Map k a)) #-}
@@ -410,3 +407,4 @@ type ReflexC2 t m = (ReflexC1 t m, MonadFix m, R.PostBuild t m)
 {-# SPECIALIZE selectViewListWithKey :: ReflexC2 t m => R.Dynamic t Int -> R.Dynamic t (IntMap v) -> (Int -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (IntMap a)) #-}
 {-# SPECIALIZE selectViewListWithKey :: ReflexC2 t m => R.Dynamic t Int -> R.Dynamic t [v] -> (Int -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (IntMap a)) #-}
 {-# SPECIALIZE selectViewListWithKey :: ReflexC2 t m => R.Dynamic t Int -> R.Dynamic t (Seq v) -> (Int -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -> m (R.Event t (IntMap a)) #-}
+-}
