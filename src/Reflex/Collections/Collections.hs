@@ -57,6 +57,8 @@ module Reflex.Collections.Collections
   , listViewWithKey
   , listViewWithKeyMaybe
   , listWithKeyShallowDiff
+  , listViewWithKeyShallowDiff
+  , listViewWithKeyShallowDiffMaybe
   , selectViewListWithKey
   , selectViewListWithKeyMaybe
   , simplifyDynMaybe
@@ -284,6 +286,47 @@ listWithKeyShallowDiff initialVals valsChanged mkChild = do
     mkChild k v $ selectCollection (Proxy :: Proxy f) childValChangedSelector k
 {-# INLINABLE listWithKeyShallowDiff #-}
 
+
+listViewWithKeyShallowDiff :: forall t m f v a. ( R.Adjustable t m
+                                                , MonadFix m
+                                                , R.MonadHold t m
+                                                , Patchable f -- for the listHold
+                                                , Functor (Diff f)
+                                                , FannableC f v
+                                                , Mergeable f
+                                                , SequenceableWithEventC t f a
+                                                , Monoid (f v))
+  => Proxy f -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> R.Event t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
+listViewWithKeyShallowDiff _ changeVals mkChild =
+  R.switch . R.current . fmap mergeOver <$> listWithKeyShallowDiff (mempty :: f v) changeVals mkChild
+
+listViewWithKeyShallowDiffMaybe :: forall t m f v a. ( R.Adjustable t m
+                                                     , MonadFix m
+                                                     , R.MonadHold t m
+                                                     , Patchable f -- for the listHold
+                                                     , Functor (Diff f)
+                                                     , FannableC f v
+                                                     , Mergeable f
+                                                     , MapLike (Diff f)
+                                                     , SequenceableWithEventC t f a)
+  => Proxy f -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> R.Event t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
+listViewWithKeyShallowDiffMaybe _ = listViewWithKeyShallowDiffGeneral (Empty :: WithEmpty f v)
+  
+
+
+listViewWithKeyShallowDiffGeneral :: ( R.Adjustable t m
+                                     , MonadFix m
+                                     , R.MonadHold t m
+                                     , Patchable f -- for the listHold
+                                     , Functor (Diff f)
+                                     , FannableC f v
+                                     , Mergeable f
+                                     , SequenceableWithEventC t f a)
+  => f v -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> R.Event t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
+listViewWithKeyShallowDiffGeneral fv changeVals mkChild =
+  R.switch . R.current . fmap mergeOver <$> listWithKeyShallowDiff fv changeVals mkChild
+
+  
 -- | Create a dynamically-changing set of widgets, one of which is selected at any time.
 -- This version allows you to add in a selection element so rather than display all widgets
 -- you can feed a Dynamic of the Key type and the individual widgets will get a Dynamic Bool input
