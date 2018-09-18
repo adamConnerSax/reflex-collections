@@ -141,7 +141,6 @@ listWithKey :: ( R.Adjustable t m
                , R.MonadHold t m
                , Patchable f
                , Monoid (f v)
-               , Functor (Diff f)
                , SequenceableC f a
                , FannableC f v)
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m a) -> m (R.Dynamic t (f a))
@@ -153,8 +152,6 @@ listWithKeyMaybe :: ( R.Adjustable t m
                     , MonadFix m
                     , R.MonadHold t m
                     , Patchable (WithEmpty f)
-                    , Functor (Diff f)
-                    , MapLike (Diff f)
                     , SequenceableC f a
                     , FannableC f v)
   => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Maybe (f a)))
@@ -190,7 +187,6 @@ list :: ( R.Adjustable t m
         , MonadFix m
         , R.MonadHold t m
         , Patchable f
-        , Functor (Diff f)
         , Monoid (f v)
         , FannableC f v
         , SequenceableC f a)
@@ -203,7 +199,6 @@ listMaybe :: ( R.Adjustable t m
              , MonadFix m
              , R.MonadHold t m
              , Patchable (WithEmpty f)
-             , Functor (Diff f)
              , SequenceableC f a
              , FannableC f v)
   => R.Dynamic t (f v) -> (R.Dynamic t v -> m a) -> m (R.Dynamic t (Maybe (f a)))
@@ -216,7 +211,6 @@ listGeneral :: ( R.Adjustable t m
                , MonadFix m
                , R.MonadHold t m
                , Patchable f  -- for the listHold
-               , Functor (Diff f)
                , SequenceableC f a
                , FannableC f v)
   => f v -- must be empty
@@ -274,7 +268,6 @@ listWithKeyShallowDiff :: forall t m f v a.( R.Adjustable t m
                                            , MonadFix m
                                            , R.MonadHold t m
                                            , Patchable f -- for the listHold
-                                           , Functor (Diff f)
                                            , FannableC f v
                                            , SequenceableC f a)
   => f v -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> R.Event t v -> m a) -> m (R.Dynamic t (f a))
@@ -291,7 +284,6 @@ listViewWithKeyShallowDiff :: forall t m f v a. ( R.Adjustable t m
                                                 , MonadFix m
                                                 , R.MonadHold t m
                                                 , Patchable f -- for the listHold
-                                                , Functor (Diff f)
                                                 , FannableC f v
                                                 , Mergeable f
                                                 , SequenceableWithEventC t f a
@@ -304,10 +296,9 @@ listViewWithKeyShallowDiffMaybe :: forall t m f v a. ( R.Adjustable t m
                                                      , MonadFix m
                                                      , R.MonadHold t m
                                                      , Patchable f -- for the listHold
-                                                     , Functor (Diff f)
-                                                     , FannableC f v
                                                      , Mergeable f
-                                                     , MapLike (Diff f)
+                                                     , MapLike (Diff f) -- required for "WithEmpty f" to be Diffable 
+                                                     , FannableC f v
                                                      , SequenceableWithEventC t f a)
   => Proxy f -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> R.Event t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
 listViewWithKeyShallowDiffMaybe _ = listViewWithKeyShallowDiffGeneral (Empty :: WithEmpty f v)
@@ -318,7 +309,6 @@ listViewWithKeyShallowDiffGeneral :: ( R.Adjustable t m
                                      , MonadFix m
                                      , R.MonadHold t m
                                      , Patchable f -- for the listHold
-                                     , Functor (Diff f)
                                      , FannableC f v
                                      , Mergeable f
                                      , SequenceableWithEventC t f a)
@@ -337,7 +327,6 @@ selectViewListWithKey :: ( R.Adjustable t m
                          , R.PostBuild t m
                          , Foldable f
                          , Mergeable f
-                         , Functor (Diff f)
                          , Monoid (f v)
                          , FannableC f v
                          , SequenceableWithEventC t f a
@@ -354,8 +343,6 @@ selectViewListWithKeyMaybe :: ( R.Adjustable t m
                               , R.PostBuild t m
                               , Foldable f
                               , Mergeable (WithEmpty f)
-                              , Functor (Diff f)
-                              , MapLike (Diff f)
                               , FannableC f v
                               , SequenceableWithEventC t f a
                               , Ord (Key f))
@@ -371,7 +358,6 @@ selectViewListWithKeyGeneral :: ( R.Adjustable t m
                                 , R.PostBuild t m
                                 , Foldable f
                                 , Mergeable f
-                                , Functor (Diff f)
                                 , FannableC f v
                                 , SequenceableWithEventC t f a
                                 , Ord (Key f))
@@ -385,7 +371,6 @@ selectViewListWithKeyGeneral emptyFV selection vals mkChild = do
   selectChild <- listWithKeyGeneral emptyFV vals $ \k v -> do
     let selected = R.demuxed selectionDemux k
     selectSelf <- mkChild k v selected
---    return $ fmap ((,) k) selectSelf
     return selectSelf
   return $ R.switchPromptlyDyn (mergeOver <$> selectChild)
 {-# INLINABLE selectViewListWithKey #-}
@@ -421,7 +406,7 @@ type ReflexC1 t m = (R.Adjustable t m, R.MonadHold t m)
 -- These are failing to specialize with a "RULE lhs to complex to desugar" message. :(
 {-
 type ReflexC2 t m = (ReflexC1 t m, MonadFix m, R.PostBuild t m)
-{-# SPECIALIZE listWithKey :: (ReflexC2 t m, Ord k, GCompare (Const2 k a),GCompare (Const2 k v)) => R.Dynamic t (Map k v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Map k a)) #-}
+{-# SPECIALIZE listWithKey :: (ReflexC2 t m, Ord k) => R.Dynamic t (Map k v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (Map k a)) #-}
 {-# SPECIALIZE listWithKey :: (ReflexC2 t m, Hashable k, Ord k, GCompare (Const2 k a)) => R.Dynamic t (HashMap k v) -> (k -> R.Dynamic t v -> m a) -> m (R.Dynamic t (HashMap k a)) #-}
 
 {-# SPECIALIZE listWithKey :: ReflexC2 t m => R.Dynamic t (IntMap v) -> (Int -> R.Dynamic t v -> m a) -> m (R.Dynamic t (IntMap a)) #-}

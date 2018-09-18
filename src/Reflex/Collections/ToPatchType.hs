@@ -84,9 +84,6 @@ mergeOver fEv =
   let id2 = const id :: (k -> R.Event t v -> R.Event t v)
   in fmap (fromSeqType (Proxy :: Proxy f)) . mergeEvents $ functorMappedToSeqType id2 fEv
 {-# INLINABLE mergeOver #-}
--- NB: Performing mergeOver on an array will lead to errors since the result won't have an event for each value of the key.
--- Should it be mergeOver :: f (Event t a) -> Event t (Diff f a) ?
--- With maybe a "simpleMerge" version that returns the same type?
 
 -- | Type families for the sequenceable and patch types.
 class SeqTypes (f :: Type -> Type) where
