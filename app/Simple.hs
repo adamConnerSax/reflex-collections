@@ -53,36 +53,38 @@ staticMapHold x w = fmap (mergeMap . M.fromList) . sequence . fmap (\(k,v) -> (k
 naiveMapHold :: (Ord k, ReflexConstraints t m) => Dynamic t (M.Map k v) -> (k -> Dynamic t v -> m (Event t v)) -> m (Event t (M.Map k v))
 naiveMapHold xDyn w = join $ switchPromptly never <$> (dyn $ flip staticMapHold w <$> xDyn)
 
-data ListElementChange a = NewValue a | Delete | MoveUp | MoveDown deriving (Show)
+data ListElementChange a = NewValue a | Delete | MoveUp a | MoveDown a deriving (Show)
 
--- NB: This widget must not fire events when it's input is updated
+-- NB: This widget must not fire events when its input is updated
 -- NB: This widget must track its own key since the underlying returned event might not be in the right slot for
 -- things like [] or Seq
 listElementWidget :: (Show a, Read a, ReflexConstraints t m) => Int -> Dynamic t a -> m (R.Event t (Int, ListElementChange a))
 listElementWidget n aDyn = do
   editEv <- fmap NewValue <$> (el "span" $ fieldWidgetEv (readMaybe . T.unpack) aDyn)
   deleteEv <- fmap (const Delete) <$> (el "span" $ buttonNoSubmit "x")
-  moveUpEv <- fmap (const MoveUp) <$> (el "span" $ buttonNoSubmit "up")
-  moveDownEv <- fmap (const MoveDown) <$> (el "span" $ buttonNoSubmit "dn")
+  moveUpEv <- R.attachWith (\a _ -> MoveUp a) (R.current aDyn) <$> (el "span" $ buttonNoSubmit "up")
+  moveDownEv <- R.attachWith (\a _ -> MoveDown a) (R.current aDyn) <$> (el "span" $ buttonNoSubmit "dn")
   return $ (n,) <$> R.leftmost [editEv, deleteEv, moveUpEv, moveDownEv]
 
+diffFromChangeNonEdit :: IM.IntMap a -> (Int, ListElementChange a) -> IM.IntMap (Maybe a)
+diffFromChangeNonEdit _ (_, NewValue _) = IM.empty
+diffFromChangeNonEdit _ (n, Delete) = IM.singleton n Nothing
+diffFromChangeNonEdit im (n, MoveUp a) =
+  let mAbove = IM.lookupLT n im -- Maybe (Int, a)
+  in maybe IM.empty (\(m,a') -> IM.fromList [(m, Just a),(n, Just a')]) mAbove
+diffFromChangeNonEdit im (n, MoveDown a) =
+  let mBelow = IM.lookupGT n im
+  in maybe IM.empty (\(m,a') -> IM.fromList [(n, Just a'),(m, Just a)]) mBelow
+
+diffFromChange :: IM.IntMap a -> (Int, ListElementChange a) -> IM.IntMap (Maybe a)
+diffFromChange _ (n, NewValue a) = IM.singleton n (Just a)
+diffFromChange im x              = diffFromChangeNonEdit im x
+
 resultDiffFromChanges :: IM.IntMap a -> IM.IntMap (Int, ListElementChange a) -> IM.IntMap (Maybe a)
-resultDiffFromChanges curAsIntMap changes =
-  let diffFromChange :: IM.IntMap a -> (Int, ListElementChange a) -> IM.IntMap (Maybe a)
-      diffFromChange _ (n, NewValue a) = IM.singleton n (Just a)
-      diffFromChange _ (n, Delete)     = IM.singleton n Nothing
-      diffFromChange im (n, MoveUp)    = undefined -- not implemented yet
-      diffFromChange im (n, MoveDown)  = undefined -- not implemented yet
-  in F.foldMap (diffFromChange curAsIntMap) . fmap snd $ IM.toList changes
+resultDiffFromChanges curAsIntMap changes = F.foldMap (diffFromChange curAsIntMap) . fmap snd $ IM.toList changes
 
 widgetInputDiffFromChanges :: IM.IntMap a -> IM.IntMap (Int, ListElementChange a) -> IM.IntMap (Maybe a)
-widgetInputDiffFromChanges curAsIntMap changes =
-  let diffFromChange :: IM.IntMap a -> (Int, ListElementChange a) -> IM.IntMap (Maybe a)
-      diffFromChange _ (n, NewValue a) = IM.empty -- edits are handled by the collection function
-      diffFromChange _ (n, Delete)     = IM.singleton n Nothing
-      diffFromChange im (n, MoveUp)    = undefined -- not implemented yet
-      diffFromChange im (n, MoveDown)  = undefined -- not implemented yet
-  in F.foldMap (diffFromChange curAsIntMap) . fmap snd $ IM.toList changes
+widgetInputDiffFromChanges curAsIntMap changes = F.foldMap (diffFromChangeNonEdit curAsIntMap) . fmap snd $ IM.toList changes
 
 
 reorderingList :: (Show a, Read a, ReflexConstraints t m) => R.Dynamic t [a] -> m (R.Dynamic t [a])
