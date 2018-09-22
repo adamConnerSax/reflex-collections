@@ -120,6 +120,9 @@ class ( KeyedCollection f
   applyDiff :: Diff f (Maybe v) -> f v -> f v
   default applyDiff :: MapLike (Diff f) => Diff f (Maybe v) -> f v -> f v
   applyDiff d old = fromFullDiff $ diffMaybeToDiff d old
+  updateAsDiff :: Proxy f -> Diff f v -> Diff f (Maybe v) -> Diff f v
+  default updateAsDiff :: MapLike (Diff f) => Proxy f -> Diff f v -> Diff f (Maybe v) -> Diff f v
+  updateAsDiff _ old dfM = mlMapMaybe id $ mlUnion dfM (Just <$> old) 
   diffNoEq :: f v -> f v -> Diff f (Maybe v)
   default diffNoEq :: Align (Diff f) => f v -> f v -> Diff f (Maybe v)
   diffNoEq = alignDiffNoEq
@@ -178,8 +181,8 @@ instance Diffable Tree where
   toDiff = K.foldMapWithKey M.singleton  --M.fromList . toKeyValueList
   fromFullDiff = fromKeyValueList . M.toAscList 
 
+
 -- default implementations for MapLike and Alignable containers  
--- a patch is ready to be made back into the original type but how depends on the type, via "patch"
 diffMaybeToDiff :: (Diffable f, MapLike (Diff f)) => Diff f (Maybe v) -> f v -> Diff f v
 diffMaybeToDiff d old =
   let deletions = mlFilter isNothing d

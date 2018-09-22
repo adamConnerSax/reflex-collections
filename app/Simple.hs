@@ -12,14 +12,19 @@
 import           GHCJS.DOM.Types                  (JSM)
 import           Language.Javascript.JSaddle.Warp (run)
 import           Reflex
-import           Reflex.Dom                       hiding (mainWidget, run)
+import qualified Reflex                           as R
+import           Reflex.Dom                       hiding (Delete, mainWidget,
+                                                   run)
+--import qualified Reflex.Dom                       as RD
 import           Reflex.Dom.Core                  (mainWidget)
 import           Reflex.Dom.Old                   (MonadWidget)
 
 import           Control.Monad                    (join)
 import           Control.Monad.Fix                (MonadFix)
 import           Data.Bool                        (bool)
-
+import qualified Data.Foldable                    as F
+import           Data.Monoid                      ((<>))
+import           Data.Proxy                       (Proxy (..))
 
 import qualified Data.Array                       as A
 import qualified Data.IntMap                      as IM
@@ -37,7 +42,7 @@ import qualified Reflex.Collections.Collections   as RC
 main::IO ()
 main = do
   let port :: Int = 3702
-  pHandle <- spawnProcess "open" ["http://localhost:" ++ show port]
+  _ <- spawnProcess "open" ["-a","/Applications/Safari.App/Contents/MacOs/Safari", "http://localhost:" ++ show port]
   run port testWidget
 
 type ReflexConstraints t m = (MonadWidget t m, DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m, DomBuilderSpace m ~ GhcjsDomSpace)
@@ -47,6 +52,94 @@ staticMapHold x w = fmap (mergeMap . M.fromList) . sequence . fmap (\(k,v) -> (k
 
 naiveMapHold :: (Ord k, ReflexConstraints t m) => Dynamic t (M.Map k v) -> (k -> Dynamic t v -> m (Event t v)) -> m (Event t (M.Map k v))
 naiveMapHold xDyn w = join $ switchPromptly never <$> (dyn $ flip staticMapHold w <$> xDyn)
+
+data ListElementChange a = NewValue a | Delete | MoveUp | MoveDown deriving (Show)
+
+-- NB: This widget must not fire events when it's input is updated
+-- NB: This widget must track its own key since the underlying returned event might not be in the right slot for
+-- things like [] or Seq
+listElementWidget :: (Show a, Read a, ReflexConstraints t m) => Int -> Dynamic t a -> m (R.Event t (Int, ListElementChange a))
+listElementWidget n aDyn = do
+  editEv <- fmap NewValue <$> (el "span" $ fieldWidgetEv (readMaybe . T.unpack) aDyn)
+  deleteEv <- fmap (const Delete) <$> (el "span" $ buttonNoSubmit "x")
+  moveUpEv <- fmap (const MoveUp) <$> (el "span" $ buttonNoSubmit "up")
+  moveDownEv <- fmap (const MoveDown) <$> (el "span" $ buttonNoSubmit "dn")
+  return $ (n,) <$> R.leftmost [editEv, deleteEv, moveUpEv, moveDownEv]
+
+resultDiffFromChanges :: IM.IntMap a -> IM.IntMap (Int, ListElementChange a) -> IM.IntMap (Maybe a)
+resultDiffFromChanges curAsIntMap changes =
+  let diffFromChange :: IM.IntMap a -> (Int, ListElementChange a) -> IM.IntMap (Maybe a)
+      diffFromChange _ (n, NewValue a) = IM.singleton n (Just a)
+      diffFromChange _ (n, Delete)     = IM.singleton n Nothing
+      diffFromChange im (n, MoveUp)    = undefined -- not implemented yet
+      diffFromChange im (n, MoveDown)  = undefined -- not implemented yet
+  in F.foldMap (diffFromChange curAsIntMap) . fmap snd $ IM.toList changes
+
+widgetInputDiffFromChanges :: IM.IntMap a -> IM.IntMap (Int, ListElementChange a) -> IM.IntMap (Maybe a)
+widgetInputDiffFromChanges curAsIntMap changes =
+  let diffFromChange :: IM.IntMap a -> (Int, ListElementChange a) -> IM.IntMap (Maybe a)
+      diffFromChange _ (n, NewValue a) = IM.empty -- edits are handled by the collection function
+      diffFromChange _ (n, Delete)     = IM.singleton n Nothing
+      diffFromChange im (n, MoveUp)    = undefined -- not implemented yet
+      diffFromChange im (n, MoveDown)  = undefined -- not implemented yet
+  in F.foldMap (diffFromChange curAsIntMap) . fmap snd $ IM.toList changes
+
+
+reorderingList :: (Show a, Read a, ReflexConstraints t m) => R.Dynamic t [a] -> m (R.Dynamic t [a])
+reorderingList listDyn =
+  let widget n a0 aEv = el "div" $ R.holdDyn a0 aEv >>= listElementWidget n
+  in simpleManagedCollection widgetInputDiffFromChanges resultDiffFromChanges widget listDyn
+
+-- Managed collection when a ~ c
+simpleManagedCollection :: ( ReflexConstraints t m
+                           , Monoid (f a)
+                           , RC.MapLike (RC.Diff f)
+                           , RC.Patchable f
+                           , RC.FannableC f a
+                           , RC.Mergeable f
+                           , RC.SequenceableWithEventC t f b
+                           , Show (RC.Diff f b)
+                           , Show (RC.Diff f (Maybe a)))
+  => (RC.Diff f a -> RC.Diff f b -> RC.Diff f (Maybe a)) -- updates to input collection which are not managed by the per-item widgets
+  -> (RC.Diff f a -> RC.Diff f b -> RC.Diff f (Maybe a)) -- all updates to the output collection
+  -> (RC.Key f -> a -> R.Event t a -> m (R.Event t b))
+  -> R.Dynamic t (f a)
+  -> m (R.Dynamic t (f a))
+simpleManagedCollection = managedCollection id updateGivenDiff where
+  updateGivenDiff :: (RC.Diffable f, RC.MapLike (RC.Diff f)) => RC.Diff f a -> f a -> RC.Diff f (Maybe a)
+  updateGivenDiff dfa fa = RC.mlUnion (Just <$> RC.toDiff fa) (Nothing <$ dfa) -- NB: mlUnion is left biased
+
+
+-- we need a bunch of reflex constraints and a bunch of collection constraints
+managedCollection :: forall t m f a b c. ( ReflexConstraints t m
+                                         , Monoid (f a)
+                                         , RC.MapLike (RC.Diff f)
+                                         , RC.Patchable f
+                                         , RC.FannableC f a
+                                         , RC.Mergeable f
+                                         , RC.SequenceableWithEventC t f b)
+  => (f a -> f c)
+  -> (RC.Diff f c -> f a -> RC.Diff f (Maybe a))
+  -> (RC.Diff f c -> RC.Diff f b -> RC.Diff f (Maybe a)) -- updates to input collection which are not managed by the per-item widgets
+  -> (RC.Diff f c -> RC.Diff f b -> RC.Diff f (Maybe c)) -- all updates to the output collection
+  -> (RC.Key f -> a -> R.Event t a -> m (R.Event t b))
+  -> R.Dynamic t (f a)
+  -> m (R.Dynamic t (f c))
+managedCollection faTofc updateFromInput updateStructure updateAll itemWidget faDyn = mdo
+  postBuild <- R.getPostBuild
+  diffBEv <- RC.listViewWithKeyShallowDiff (Proxy :: Proxy f) (R.leftmost [dfMaFromWidgetsEv, dfMaNewInputEv]) itemWidget
+  let dfMaFromWidgetsEv = R.attachWith updateStructure (R.current curFcDiffDyn) diffBEv
+      newInputFaEv = R.leftmost [R.updated faDyn, tag (R.current faDyn) postBuild]
+      dfMaNewInputEv = R.attachWith updateFromInput (R.current curFcDiffDyn) newInputFaEv
+      dfMcFromWidgetsEv = R.attachWith updateAll (R.current curFcDiffDyn) diffBEv
+      curFcDiffEv = R.attachWith (RC.mlDifferenceWith (const id)) (R.current curFcDiffDyn) dfMcFromWidgetsEv
+  curFcDiffDyn <- R.buildDynamic (R.sample . R.current . fmap (RC.toDiff . faTofc) $ faDyn) $ R.leftmost [curFcDiffEv, RC.toDiff . faTofc <$> newInputFaEv]
+  return $ (RC.fromFullDiff <$> curFcDiffDyn)
+
+
+
+buttonNoSubmit :: DomBuilder t m => T.Text -> m (Event t ())
+buttonNoSubmit t = (domEvent Click . fst) <$> elAttr' "button" ("type" =: "button") (text t)
 
 testWidget :: JSM()
 testWidget = mainWidget $ do
@@ -95,6 +188,10 @@ testWidget = mainWidget $ do
 
   -- NB: fmap sequence . join . fmap sequence :: Dynamic [Dynamic (Maybe a)] -> Dynamic (Maybe [a])
 
+  bigBreak
+  el "h3" $ text "Now a managedCollection example"
+  listDyn1 <- reorderingList listDyn0
+  dynText $ fmap (T.pack . show) listDyn1
   return ()
 
 

@@ -84,7 +84,8 @@ module Reflex.Collections.Collections
 import           Reflex.Collections.Diffable        (Diffable (..),
                                                      MapLike (..))
 import           Reflex.Collections.KeyedCollection (KeyedCollection (..))
-import           Reflex.Collections.Sequenceable    (PatchSequenceable (..), SequenceC)
+import           Reflex.Collections.Sequenceable    (PatchSequenceable (..),
+                                                     SequenceC)
 import           Reflex.Collections.ToPatchType     (Distributable, Mergeable,
                                                      Patchable, SeqTypes (..),
                                                      ToPatchType (..),
@@ -274,8 +275,8 @@ listWithKeyShallowDiff :: forall t m f v a.( R.Adjustable t m
 listWithKeyShallowDiff initialVals valsChanged mkChild = do
   let editDiffLeavingDeletes' = editDiffLeavingDeletes (Proxy :: Proxy f)
       childValChangedSelector = fanDiffMaybe (Proxy :: Proxy f) valsChanged
-  sentVals <- R.foldDyn applyDiff (void initialVals) $ fmap (fmap void) valsChanged
-  listHoldWithKey initialVals (R.attachWith (flip editDiffLeavingDeletes') (toDiff <$> R.current sentVals) valsChanged) $ \k v ->
+  sentValsAsDiffDyn <- R.foldDyn (flip $ updateAsDiff (Proxy :: Proxy f)) (toDiff $ void initialVals) $ fmap (fmap void) valsChanged
+  listHoldWithKey initialVals (R.attachWith (flip editDiffLeavingDeletes') (R.current sentValsAsDiffDyn) valsChanged) $ \k v ->
     mkChild k v $ selectCollection (Proxy :: Proxy f) childValChangedSelector k
 {-# INLINABLE listWithKeyShallowDiff #-}
 
@@ -297,12 +298,12 @@ listViewWithKeyShallowDiffMaybe :: forall t m f v a. ( R.Adjustable t m
                                                      , R.MonadHold t m
                                                      , Patchable f -- for the listHold
                                                      , Mergeable f
-                                                     , MapLike (Diff f) -- required for "WithEmpty f" to be Diffable 
+                                                     , MapLike (Diff f) -- required for "WithEmpty f" to be Diffable
                                                      , FannableC f v
                                                      , SequenceableWithEventC t f a)
   => Proxy f -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> R.Event t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
 listViewWithKeyShallowDiffMaybe _ = listViewWithKeyShallowDiffGeneral (Empty :: WithEmpty f v)
-  
+
 
 
 listViewWithKeyShallowDiffGeneral :: ( R.Adjustable t m
@@ -316,7 +317,7 @@ listViewWithKeyShallowDiffGeneral :: ( R.Adjustable t m
 listViewWithKeyShallowDiffGeneral fv changeVals mkChild =
   R.switch . R.current . fmap mergeOver <$> listWithKeyShallowDiff fv changeVals mkChild
 
-  
+
 -- | Create a dynamically-changing set of widgets, one of which is selected at any time.
 -- This version allows you to add in a selection element so rather than display all widgets
 -- you can feed a Dynamic of the Key type and the individual widgets will get a Dynamic Bool input

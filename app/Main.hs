@@ -43,7 +43,7 @@ import qualified Reflex.Collections.Collections   as RC
 main::IO ()
 main = do
   let port :: Int = 3702
-  pHandle <- spawnProcess "open" ["http://localhost:" ++ show port]
+  _ <- spawnProcess "open" ["-a","/Applications/Safari.App/Contents/MacOs/Safari", "http://localhost:" ++ show port]
   run port testWidget
 
 type ReflexConstraints t m = (MonadWidget t m, DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m, DomBuilderSpace m ~ GhcjsDomSpace)
@@ -102,6 +102,8 @@ smallBreak =   el "br" blank >> el "br" blank
 
 bigBreak::DomBuilder t m=>m()
 bigBreak =   el "br" blank >> el "h1" (text "") >> el "br" blank
+
+
 
 
 type EditF t m k v = Dynamic t (M.Map k v)->m (Dynamic t (M.Map k v))
