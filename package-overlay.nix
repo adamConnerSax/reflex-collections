@@ -1,5 +1,6 @@
 {nixpkgs ? import <nixpkgs> {} }:
 self: super: {
+   unordered-containers = super.callHackage "unordered-containers" "0.2.8.0" {};
 #  quickcheck = super.callHackage "quickcheck" "2.11.3" {};
 #  validation = super.callHackage "validation" "0.6.0" {}; #fix doctest error
 #  perConstructor-sop = super.callCabal2nix "perConstructor-sop" (nixpkgs.pkgs.fetchFromGitHub {
