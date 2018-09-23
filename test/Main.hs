@@ -10,8 +10,11 @@ import           Data.IntMap                        (IntMap)
 import           Data.Map                           (Map)
 import           Data.Sequence                      (Seq)
 import           Data.Tree                          (Tree)
+import           Data.Proxy                         (Proxy(..))
+
 import           Reflex.Collections.Diffable        (Diffable (..),
-                                                     MapLike (..))
+                                                     Diff,
+                                                     SetLike (..))
 import           Reflex.Collections.KeyedCollection (KeyedCollection (..))
 import           Reflex.Collections.WithEmpty       (WithEmpty (..))
 import           Test.Hspec
@@ -36,17 +39,17 @@ prop_KC_keyValueListIso c =
   let asList = toKeyValueList c
   in equalKC asList $ (toKeyValueList . (fromKeyValueList :: [(k, a)] -> f a) $ asList)
 
-prop_MapLike_FilterAll :: (KeyedCollection f, MapLike f) => f a -> Bool
-prop_MapLike_FilterAll  = emptyKC . mlFilter (const False)
+prop_SetLike_FilterAll :: (KeyedCollection f, SetLike f) => f a -> Bool
+prop_SetLike_FilterAll  = emptyKC . slFilter (const False)
 
-prop_MapLike_DiffSelf :: (KeyedCollection f, MapLike f) => f a -> Bool
-prop_MapLike_DiffSelf a = emptyKC $ mlDifference a a
+prop_SetLike_DiffSelf :: (KeyedCollection f, SetLike f) => f a -> Bool
+prop_SetLike_DiffSelf a = emptyKC $ slDifference a a
 
-prop_MapLike_UnionAfterDifference :: (KeyedCollection f, MapLike f, Eq a, Eq (Key f)) => f a -> f a -> Bool
-prop_MapLike_UnionAfterDifference a b = equalKC (mlUnion a b) (mlUnion a (mlDifference b a))
+prop_SetLike_UnionAfterDifference :: (KeyedCollection f, SetLike f, Eq a, Eq (Key f)) => f a -> f a -> Bool
+prop_SetLike_UnionAfterDifference a b = equalKC (slUnion a b) (slUnion a (slDifference b a))
 
 prop_Diffable_DiffIso :: (Eq (Key f), Eq a, Diffable f) => f a -> Bool
-prop_Diffable_DiffIso a = equalKC a (fromFullDiff $ toDiff a)
+prop_Diffable_DiffIso a = equalKC a (fromCompleteKeyValueSet $ toKeyValueSet a)
 
 prop_Diffable_DiffLawNoEq :: (Diffable f, Eq a, Eq (Key f)) => f a -> f a -> Bool
 prop_Diffable_DiffLawNoEq a b = equalKC b (applyDiff (diffNoEq a b) a)
@@ -55,7 +58,22 @@ prop_Diffable_DiffLaw :: (Diffable f, Eq a, Eq (Key f)) => f a -> f a -> Bool
 prop_Diffable_DiffLaw a b = equalKC b (applyDiff (diff a b) a)
 
 -- an array that must have values for all keys
-newtype TotalArray k a = TotalArray { unTA :: Array k a } deriving (Functor, KeyedCollection, Diffable, Show)
+newtype TotalArray k a = TotalArray { unTA :: Array k a } deriving (Functor, Show)
+
+instance Ix k => KeyedCollection (TotalArray k) where
+  type Key (TotalArray k) = Key (Array k)
+  mapWithKey h = TotalArray . mapWithKey h . unTA
+  toKeyValueList = toKeyValueList . unTA
+  fromKeyValueList = TotalArray . fromKeyValueList
+
+instance (Enum k, Bounded k, Ord k, Ix k) => Diffable (TotalArray k) where
+  type KeyValueSet (TotalArray k) = KeyValueSet (Array k)
+  toKeyValueSet = toKeyValueSet . unTA
+  fromCompleteKeyValueSet = TotalArray . fromCompleteKeyValueSet
+  applyDiff d old = TotalArray $ applyDiff d (unTA old)
+  diffNoEq old new = diffNoEq (unTA old) (unTA new)
+  diffOnlyKeyChanges old new = diffOnlyKeyChanges (unTA old) (unTA new)
+  editDiffLeavingDeletes _ d kv = editDiffLeavingDeletes (Proxy :: Proxy (Array k)) d kv
 
 -- the Arbitrary instance for Array uses a random contiguous subset of indices.  We need them all.
 -- We generate an arbitrary list of values of the right length and then fmap to get a TotalArray
@@ -84,10 +102,10 @@ main = hspec $ do
        it "prop_KC_keyValueListIso (IntMap Double)" $ property (prop_KC_keyValueListIso :: IntMap Double -> Bool)
        it "prop_KC_keyValueListIso (Tree Char)" $ property (prop_KC_keyValueListIso :: Tree Char -> Bool)
   describe "MapLike: filter & mapMaybe" $
-    do it "prop_MapLike_FilterAll (Map Int Int)" $ property (prop_MapLike_FilterAll :: Map Int Int -> Bool)
-  describe "MapLike: union and intersection" $
-    do it "prop_MapLike_DiffSelf (Map Int Int)" $ property (prop_MapLike_DiffSelf :: Map Int Int -> Bool)
-       it "prop_MapLike_UnionAfterDifference (Map Int Int)" $ property (prop_MapLike_UnionAfterDifference :: Map Int Int -> Map Int Int -> Bool)
+    do it "prop_SetLike_FilterAll (Map Int Int)" $ property (prop_SetLike_FilterAll :: Map Int Int -> Bool)
+  describe "SetLike: union and intersection" $
+    do it "prop_SetLike_DiffSelf (Map Int Int)" $ property (prop_SetLike_DiffSelf :: Map Int Int -> Bool)
+       it "prop_SetLike_UnionAfterDifference (Map Int Int)" $ property (prop_SetLike_UnionAfterDifference :: Map Int Int -> Map Int Int -> Bool)
   describe "Diffable: fromFullDiff . toDiff = id" $
     do it "prop_Diffable_DiffIso (Map Int Int)" $ property (prop_Diffable_DiffIso :: Map Int Int -> Bool)
        it "prop_Diffable_DiffIso (IntMap Int)" $ property (prop_Diffable_DiffIso :: IntMap Int -> Bool)
