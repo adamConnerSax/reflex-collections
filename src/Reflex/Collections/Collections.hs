@@ -71,7 +71,8 @@ module Reflex.Collections.Collections
   , distributeOverDynPure
   , KeyedCollection(..)
   , Diffable (..)
-  , MapLike (..)
+  , SetLike (..)
+  , Diff
   , Patchable
   , Distributable
   , Mergeable
@@ -81,8 +82,8 @@ module Reflex.Collections.Collections
   ) where
 
 
-import           Reflex.Collections.Diffable        (Diffable (..),
-                                                     MapLike (..))
+import           Reflex.Collections.Diffable        (Diffable (..), Diff,
+                                                     SetLike (..))
 import           Reflex.Collections.KeyedCollection (KeyedCollection (..))
 import           Reflex.Collections.Sequenceable    (PatchSequenceable (..),
                                                      SequenceC)
@@ -103,7 +104,7 @@ import           Data.Dependent.Map                 (GCompare)
 import           Data.Functor.Misc                  (Const2 (..))
 import           Data.Proxy                         (Proxy (..))
 
--- for specializtions
+-- for specializations
 import           Data.Array                         (Array, Ix)
 import           Data.Hashable                      (Hashable)
 import           Data.HashMap.Strict                (HashMap)
@@ -125,8 +126,11 @@ type SequenceableWithEventC t f v = (SequenceableC f v, SequenceableC f (R.Event
 -- event changes the value of v for a given k.  What this function does provide is efficient routing of each event to the specific
 -- widget that has changed, thus rebuilding only the widgets that have changing inputs.
 -- NB: use of unsafeFromSeqType is okay here.  We are updating an initial container which has values for all keys if required.
-listHoldWithKey :: forall t m f v a. (R.Adjustable t m, R.MonadHold t m, Patchable f, SequenceableC f a)
-  => f v -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> m a) -> m (R.Dynamic t (f a))
+listHoldWithKey :: forall t m f v a. ( R.Adjustable t m
+                                     , R.MonadHold t m
+                                     , Patchable f
+                                     , SequenceableC f a)
+  => f v -> R.Event t (Diff f v) -> (Key f -> v -> m a) -> m (R.Dynamic t (f a))
 listHoldWithKey c0 c' h = do
   let dc0 = functorMappedToSeqType h c0
       dc' = fmap (makePatchSeq (Proxy :: Proxy f) h) c'
@@ -174,7 +178,7 @@ listWithKeyGeneral emptyFV vals mkChild = do
   postBuild <- R.getPostBuild
   let childValChangedSelector = fanCollection $ R.updated vals
   rec sentVals :: R.Dynamic t (f v) <- R.foldDyn applyDiff emptyFV changeVals
-      let changeVals :: R.Event t (Diff f (Maybe v))
+      let changeVals :: R.Event t (Diff f v)
           changeVals = R.attachWith diffOnlyKeyChanges (R.current sentVals) $ R.leftmost
                        [ R.updated vals
                        , R.tag (R.current vals) postBuild
@@ -230,7 +234,7 @@ listViewWithKey ::  ( R.Adjustable t m
                     , Monoid (f v)
                     , FannableC f v
                     , SequenceableWithEventC t f a)
-  => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
+  => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (KeyValueSet f a))
 listViewWithKey = listViewWithKeyGeneral mempty
 {-# INLINABLE listViewWithKey #-}
 
@@ -241,7 +245,7 @@ listViewWithKeyMaybe ::  ( R.Adjustable t m
                          , Mergeable (WithEmpty f)
                          , FannableC f v
                          , SequenceableWithEventC t f a)
-  => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
+  => R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (KeyValueSet f a))
 listViewWithKeyMaybe fDyn widget = listViewWithKeyGeneral Empty (NonEmpty <$> fDyn) widget
 {-# INLINABLE listViewWithKeyMaybe #-}
 
@@ -255,7 +259,7 @@ listViewWithKeyGeneral ::  ( R.Adjustable t m
                            , FannableC f v
                            , SequenceableWithEventC t f a)
   => f v -- must be empty
-  -> R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
+  -> R.Dynamic t (f v) -> (Key f -> R.Dynamic t v -> m (R.Event t a)) -> m (R.Event t (KeyValueSet f a))
 listViewWithKeyGeneral emptyFV vals mkChild =
   R.switch . R.current . fmap mergeOver <$> listWithKeyGeneral emptyFV vals mkChild
 {-# INLINABLE listViewWithKeyGeneral #-}
@@ -271,15 +275,15 @@ listWithKeyShallowDiff :: forall t m f v a.( R.Adjustable t m
                                            , Patchable f -- for the listHold
                                            , FannableC f v
                                            , SequenceableC f a)
-  => f v -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> R.Event t v -> m a) -> m (R.Dynamic t (f a))
+  => f v -> R.Event t (Diff f v) -> (Key f -> v -> R.Event t v -> m a) -> m (R.Dynamic t (f a))
 listWithKeyShallowDiff initialVals valsChanged mkChild = do
   let editDiffLeavingDeletes' = editDiffLeavingDeletes (Proxy :: Proxy f)
       childValChangedSelector = fanDiffMaybe (Proxy :: Proxy f) valsChanged
-  sentValsAsDiffDyn <- R.foldDyn (flip $ updateAsDiff (Proxy :: Proxy f)) (toDiff $ void initialVals) $ fmap (fmap void) valsChanged
+      initialKeyValueSet = toKeyValueSet $ void initialVals
+  sentValsAsDiffDyn <- R.foldDyn (flip $ updateKeyValueSet (Proxy :: Proxy f)) initialKeyValueSet $ fmap (fmap void) valsChanged
   listHoldWithKey initialVals (R.attachWith (flip editDiffLeavingDeletes') (R.current sentValsAsDiffDyn) valsChanged) $ \k v ->
     mkChild k v $ selectCollection (Proxy :: Proxy f) childValChangedSelector k
 {-# INLINABLE listWithKeyShallowDiff #-}
-
 
 listViewWithKeyShallowDiff :: forall t m f v a. ( R.Adjustable t m
                                                 , MonadFix m
@@ -289,7 +293,7 @@ listViewWithKeyShallowDiff :: forall t m f v a. ( R.Adjustable t m
                                                 , Mergeable f
                                                 , SequenceableWithEventC t f a
                                                 , Monoid (f v))
-  => Proxy f -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> R.Event t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
+  => Proxy f -> R.Event t (Diff f v) -> (Key f -> v -> R.Event t v -> m (R.Event t a)) -> m (R.Event t (KeyValueSet f a))
 listViewWithKeyShallowDiff _ changeVals mkChild =
   R.switch . R.current . fmap mergeOver <$> listWithKeyShallowDiff (mempty :: f v) changeVals mkChild
 
@@ -298,12 +302,10 @@ listViewWithKeyShallowDiffMaybe :: forall t m f v a. ( R.Adjustable t m
                                                      , R.MonadHold t m
                                                      , Patchable f -- for the listHold
                                                      , Mergeable f
-                                                     , MapLike (Diff f) -- required for "WithEmpty f" to be Diffable
                                                      , FannableC f v
                                                      , SequenceableWithEventC t f a)
-  => Proxy f -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> R.Event t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
+  => Proxy f -> R.Event t (Diff f v) -> (Key f -> v -> R.Event t v -> m (R.Event t a)) -> m (R.Event t (KeyValueSet f a))
 listViewWithKeyShallowDiffMaybe _ = listViewWithKeyShallowDiffGeneral (Empty :: WithEmpty f v)
-
 
 
 listViewWithKeyShallowDiffGeneral :: ( R.Adjustable t m
@@ -313,7 +315,7 @@ listViewWithKeyShallowDiffGeneral :: ( R.Adjustable t m
                                      , FannableC f v
                                      , Mergeable f
                                      , SequenceableWithEventC t f a)
-  => f v -> R.Event t (Diff f (Maybe v)) -> (Key f -> v -> R.Event t v -> m (R.Event t a)) -> m (R.Event t (Diff f a))
+  => f v -> R.Event t (Diff f v) -> (Key f -> v -> R.Event t v -> m (R.Event t a)) -> m (R.Event t (KeyValueSet f a))
 listViewWithKeyShallowDiffGeneral fv changeVals mkChild =
   R.switch . R.current . fmap mergeOver <$> listWithKeyShallowDiff fv changeVals mkChild
 
@@ -335,7 +337,7 @@ selectViewListWithKey :: ( R.Adjustable t m
   => R.Dynamic t (Key f)          -- ^ Current selection key
   -> R.Dynamic t (f v)      -- ^ Dynamic container of values
   -> (Key f -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -- ^ Function to create a widget for a given key from Dynamic value and Dynamic Bool indicating if this widget is currently selected
-  -> m (R.Event t (Diff f a))        -- ^ Event that fires when any child's return Event fires.
+  -> m (R.Event t (KeyValueSet f a))        -- ^ Event that fires when any child's return Event fires.
 selectViewListWithKey  = selectViewListWithKeyGeneral mempty
 
 selectViewListWithKeyMaybe :: ( R.Adjustable t m
@@ -350,7 +352,7 @@ selectViewListWithKeyMaybe :: ( R.Adjustable t m
   => R.Dynamic t (Key f)          -- ^ Current selection key
   -> R.Dynamic t (f v)      -- ^ Dynamic container of values
   -> (Key f -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -- ^ Function to create a widget for a given key from Dynamic value and Dynamic Bool indicating if this widget is currently selected
-  -> m (R.Event t (Diff f a))        -- ^ Event that fires when any child's return Event fires.
+  -> m (R.Event t (KeyValueSet f a))        -- ^ Event that fires when any child's return Event fires.
 selectViewListWithKeyMaybe  keyDyn fDyn widget = selectViewListWithKeyGeneral Empty keyDyn (NonEmpty <$> fDyn) widget
 
 selectViewListWithKeyGeneral :: ( R.Adjustable t m
@@ -366,7 +368,7 @@ selectViewListWithKeyGeneral :: ( R.Adjustable t m
   -> R.Dynamic t (Key f)          -- ^ Current selection key
   -> R.Dynamic t (f v)      -- ^ Dynamic container of values
   -> (Key f -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -- ^ Function to create a widget for a given key from Dynamic value and Dynamic Bool indicating if this widget is currently selected
-  -> m (R.Event t (Diff f a))        -- ^ Event that fires when any child's return Event fires.
+  -> m (R.Event t (KeyValueSet f a))        -- ^ Event that fires when any child's return Event fires.
 selectViewListWithKeyGeneral emptyFV selection vals mkChild = do
   let selectionDemux = R.demux selection -- For good performance, this value must be shared across all children
   selectChild <- listWithKeyGeneral emptyFV vals $ \k v -> do

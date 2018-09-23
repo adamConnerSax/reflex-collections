@@ -19,7 +19,8 @@
 module Reflex.Collections.Diffable
   (
     Diffable(..)
-  , MapLike(..)
+  , Diff
+  , SetLike(..)
   ) where
 
 import           Reflex.Collections.KeyedCollection (KeyedCollection(..))
@@ -46,175 +47,175 @@ import qualified Data.Array             as A
 import qualified Data.Sequence          as S
 import           Data.Tree              (Tree)
 
-class Functor f => MapLike f where
-  mlEmpty :: f a
-  mlNull :: f a -> Bool
-  mlUnion :: f a -> f a -> f a -- left preferring union
-  mlDifference :: f a -> f b -> f a -- remove from left any element whose key appears in right
-  mlFilter :: (a -> Bool) -> f a -> f a
-  mlMapMaybe :: (a -> Maybe b) -> f a -> f b  -- is this always `mlMaybe f = mlFilter (maybe False (const True) . f) `?
-  mlDifferenceWith :: (a -> b -> Maybe a) -> f a -> f b -> f a 
+class Functor f => SetLike f where
+  slEmpty :: f a
+  slNull :: f a -> Bool
+  slUnion :: f a -> f a -> f a -- left preferring union
+  slDifference :: f a -> f b -> f a -- remove from left any element whose key appears in right
+  slDifferenceWith :: (a -> b -> Maybe a) -> f a -> f b -> f a 
+  slFilter :: (a -> Bool) -> f a -> f a
+  slMapMaybe :: (a -> Maybe b) -> f a -> f b  -- is this always `mapMaybe f = slFilter (maybe False (const True) . f) `?
 
-instance Ord k => MapLike (M.Map k) where
-  {-# INLINABLE mlEmpty #-}
-  mlEmpty = M.empty
-  {-# INLINABLE mlNull #-}
-  mlNull = M.null
-  {-# INLINABLE mlUnion #-}
-  mlUnion = M.union
-  {-# INLINABLE mlDifference #-}
-  mlDifference = M.difference
-  {-# INLINABLE mlFilter #-}
-  mlFilter = M.filter
-  {-# INLINABLE mlMapMaybe #-}
-  mlMapMaybe = M.mapMaybe
-  {-# INLINABLE mlDifferenceWith #-}
-  mlDifferenceWith = M.differenceWith
 
-instance (Eq k, Hashable k) => MapLike (HM.HashMap k) where
-  {-# INLINABLE mlEmpty #-}
-  mlEmpty = HM.empty
-  {-# INLINABLE mlNull #-}
-  mlNull = HM.null
-  {-# INLINABLE mlUnion #-}
-  mlUnion = HM.union
-  {-# INLINABLE mlDifference #-}    
-  mlDifference = HM.difference
-  {-# INLINABLE mlFilter #-}  
-  mlFilter = HM.filter
-  {-# INLINABLE mlMapMaybe #-}  
-  mlMapMaybe = HM.mapMaybe
-  {-# INLINABLE mlDifferenceWith #-}  
-  mlDifferenceWith = HM.differenceWith
+instance Ord k => SetLike (M.Map k) where
+  {-# INLINABLE slEmpty #-}
+  slEmpty = M.empty
+  {-# INLINABLE slNull #-}
+  slNull = M.null
+  {-# INLINABLE slUnion #-}
+  slUnion = M.union
+  {-# INLINABLE slDifference #-}
+  slDifference = M.difference
+  {-# INLINABLE slFilter #-}
+  slFilter = M.filter
+  {-# INLINABLE slMapMaybe #-}
+  slMapMaybe = M.mapMaybe
+  {-# INLINABLE slDifferenceWith #-}
+  slDifferenceWith = M.differenceWith
 
-instance MapLike IntMap where
-  {-# INLINABLE mlEmpty #-}  
-  mlEmpty = IM.empty
-  {-# INLINABLE mlNull #-}
-  mlNull = IM.null
-  {-# INLINABLE mlUnion #-}  
-  mlUnion = IM.union
-  {-# INLINABLE mlDifference #-}      
-  mlDifference = IM.difference
-  {-# INLINABLE mlFilter #-}    
-  mlFilter = IM.filter
-  {-# INLINABLE mlMapMaybe #-}    
-  mlMapMaybe = IM.mapMaybe
-  {-# INLINABLE mlDifferenceWith #-}    
-  mlDifferenceWith = IM.differenceWith
+instance (Eq k, Hashable k) => SetLike (HM.HashMap k) where
+  {-# INLINABLE slEmpty #-}
+  slEmpty = HM.empty
+  {-# INLINABLE slNull #-}
+  slNull = HM.null
+  {-# INLINABLE slUnion #-}
+  slUnion = HM.union
+  {-# INLINABLE slDifference #-}    
+  slDifference = HM.difference
+  {-# INLINABLE slFilter #-}  
+  slFilter = HM.filter
+  {-# INLINABLE slMapMaybe #-}  
+  slMapMaybe = HM.mapMaybe
+  {-# INLINABLE slDifferenceWith #-}  
+  slDifferenceWith = HM.differenceWith
+
+instance SetLike IntMap where
+  {-# INLINABLE slEmpty #-}  
+  slEmpty = IM.empty
+  {-# INLINABLE slNull #-}
+  slNull = IM.null
+  {-# INLINABLE slUnion #-}  
+  slUnion = IM.union
+  {-# INLINABLE slDifference #-}      
+  slDifference = IM.difference
+  {-# INLINABLE slFilter #-}    
+  slFilter = IM.filter
+  {-# INLINABLE slMapMaybe #-}    
+  slMapMaybe = IM.mapMaybe
+  {-# INLINABLE slDifferenceWith #-}    
+  slDifferenceWith = IM.differenceWith
 
 -- (f a) is the container
--- (Diff f a) has the operations to make and combine subsets, usually using Diff f (Maybe a)
--- we make a new f using and old f and Diff, since sometimes Diff loses information required to reconstruct. E.g., Diff (Array k) = Map k
--- and (Array k) needs a value for each key which Map may not have one.
+-- (KeyValueSet f a) has the operations to make and combine subsets, usually using Diff f a ~ KeyValueSet f (Maybe a)
 
 -- this class has laws:
 -- applyDiff (diff a b) a = b
 -- applyDiff (diffNoEq a b) a = b
 -- fromFullDiff . toDiff = id
+type Diff f a = KeyValueSet f (Maybe a)
+
 class ( KeyedCollection f
-      , KeyedCollection (Diff f)) => Diffable (f :: Type -> Type) where
-  type Diff f :: Type -> Type -- keyed collection of ElemUpdates
-  toDiff :: f a -> Diff f a
-  fromFullDiff :: Diff f a -> f a -- must satisfy (fromFullDiff . toDiff = id)
-  applyDiff :: Diff f (Maybe v) -> f v -> f v
-  default applyDiff :: MapLike (Diff f) => Diff f (Maybe v) -> f v -> f v
-  applyDiff d old = fromFullDiff $ diffMaybeToDiff d old
-  updateAsDiff :: Proxy f -> Diff f v -> Diff f (Maybe v) -> Diff f v
-  default updateAsDiff :: MapLike (Diff f) => Proxy f -> Diff f v -> Diff f (Maybe v) -> Diff f v
-  updateAsDiff _ old dfM = mlMapMaybe id $ mlUnion dfM (Just <$> old) 
-  diffNoEq :: f v -> f v -> Diff f (Maybe v)
-  default diffNoEq :: Align (Diff f) => f v -> f v -> Diff f (Maybe v)
+      , KeyedCollection (KeyValueSet f)
+      , SetLike (KeyValueSet f)) => Diffable (f :: Type -> Type) where
+  type KeyValueSet f :: Type -> Type -- keyed collection of ElemUpdates
+  toKeyValueSet :: f a -> KeyValueSet f a
+  -- NB: Precondition (that the KeyValueSet is complete) is not checked
+  fromCompleteKeyValueSet :: KeyValueSet f a -> f a -- must satisfy (fromFullDiff . toDiff = id)
+  applyDiff :: Diff f v -> f v -> f v
+  applyDiff d old = fromCompleteKeyValueSet $ appliedDiffToKeyValueSet d old
+  updateKeyValueSet :: Proxy f -> KeyValueSet f v -> Diff f v -> KeyValueSet f v
+  updateKeyValueSet _ oldKVS d = slMapMaybe id $ slUnion d (Just <$> oldKVS) 
+  diffNoEq :: f v -> f v -> Diff f v
+  default diffNoEq :: Align (KeyValueSet f) => f v -> f v -> Diff f v
   diffNoEq = alignDiffNoEq
   {-# INLINABLE diffNoEq #-}
-  diff :: Eq v => f v -> f v -> Diff f (Maybe v)
-  default diff :: (Eq v, Align (Diff f), MapLike (Diff f)) => f v -> f v -> Diff f (Maybe v)
-  diff = alignMapLikeDiff
+  diff :: Eq v => f v -> f v -> Diff f v
+  default diff :: (Eq v, Align (KeyValueSet f)) => f v -> f v -> Diff f v
+  diff = alignDiff
   {-# INLINABLE diff #-}
-  diffOnlyKeyChanges :: f v -> f v -> Diff f (Maybe v)
-  default diffOnlyKeyChanges :: (Align (Diff f), MapLike (Diff f)) => f v -> f v -> Diff f (Maybe v)
-  diffOnlyKeyChanges = alignMapLikeDiffOnlyKeyChanges
+  diffOnlyKeyChanges :: f v -> f v -> Diff f v
+  default diffOnlyKeyChanges :: Align (KeyValueSet f) => f v -> f v -> Diff f v
+  diffOnlyKeyChanges = alignDiffOnlyKeyChanges
   {-# INLINABLE diffOnlyKeyChanges #-}
-  editDiffLeavingDeletes :: Proxy f -> Diff f (Maybe v) -> Diff f b -> Diff f (Maybe v)
-  default editDiffLeavingDeletes :: MapLike (Diff f) => Proxy f -> Diff f (Maybe v) -> Diff f b -> Diff f (Maybe v)
-  editDiffLeavingDeletes = mapLikeEditDiffLeavingDeletes
+  editDiffLeavingDeletes :: Proxy f -> Diff f v -> KeyValueSet f b -> Diff f v
+  editDiffLeavingDeletes = defaultEditDiffLeavingDeletes
   {-# INLINABLE editDiffLeavingDeletes #-}
   
 instance Ord k => Diffable (Map k) where
-  type Diff (Map k) = Map k
-  toDiff = id
-  fromFullDiff = id
+  type KeyValueSet (Map k) = Map k
+  toKeyValueSet = id
+  fromCompleteKeyValueSet = id
   
 instance (Eq k, Hashable k) => Diffable (HashMap k) where
-  type Diff (HashMap k) = HashMap k
-  toDiff = id
-  fromFullDiff = id
+  type KeyValueSet (HashMap k) = HashMap k
+  toKeyValueSet = id
+  fromCompleteKeyValueSet = id
 
 instance Diffable IntMap where
-  type Diff IntMap = IntMap
-  toDiff = id
-  fromFullDiff = id
+  type KeyValueSet IntMap = IntMap
+  toKeyValueSet = id
+  fromCompleteKeyValueSet = id
 
 instance Diffable [] where
-  type Diff [] = IntMap
-  toDiff = IM.fromAscList . zip [0..]
-  fromFullDiff = fmap snd . IM.toAscList
+  type KeyValueSet [] = IntMap
+  toKeyValueSet = IM.fromAscList . zip [0..]
+  fromCompleteKeyValueSet = fmap snd . IM.toAscList
 
 instance Diffable S.Seq where
-  type Diff S.Seq = IntMap
-  toDiff = IM.fromAscList . zip [0..] . F.toList
-  fromFullDiff = S.fromList . fmap snd . IM.toAscList
+  type KeyValueSet S.Seq = IntMap
+  toKeyValueSet = IM.fromAscList . zip [0..] . F.toList
+  fromCompleteKeyValueSet = S.fromList . fmap snd . IM.toAscList
   
 instance (Enum k, Ix k, Bounded k) => Diffable (Array k) where
-  type Diff (Array k) = IntMap
-  toDiff = IM.fromAscList . fmap (first fromEnum) . A.assocs
-  fromFullDiff = A.listArray (minBound,maxBound) . fmap snd . IM.toAscList
-  {-# INLINABLE fromFullDiff #-}
-  applyDiff d old = old A.// fmap (first toEnum) (IM.toAscList $ diffMaybeToDiff d old)
+  type KeyValueSet (Array k) = IntMap
+  toKeyValueSet = IM.fromAscList . fmap (first fromEnum) . A.assocs
+  fromCompleteKeyValueSet = A.listArray (minBound,maxBound) . fmap snd . IM.toAscList
+  {-# INLINABLE fromCompleteKeyValueSet #-}
+  applyDiff d old = old A.// fmap (first toEnum) (IM.toAscList $ appliedDiffToKeyValueSet d old)
   {-# INLINABLE applyDiff #-}
-  diffNoEq _ new = Just <$> toDiff new
+  diffNoEq _ new = Just <$> toKeyValueSet new
   diffOnlyKeyChanges _ _ = IM.empty
   editDiffLeavingDeletes _ _ _ = IM.empty
 
 instance Diffable Tree where
-  type Diff Tree = Map (S.Seq Int)
-  toDiff = K.foldMapWithKey M.singleton  --M.fromList . toKeyValueList
-  fromFullDiff = fromKeyValueList . M.toAscList 
+  type KeyValueSet Tree = Map (S.Seq Int)
+  toKeyValueSet = K.foldMapWithKey M.singleton  --M.froslist . toKeyValueList
+  fromCompleteKeyValueSet = fromKeyValueList . M.toAscList 
 
 
 -- default implementations for MapLike and Alignable containers  
-diffMaybeToDiff :: (Diffable f, MapLike (Diff f)) => Diff f (Maybe v) -> f v -> Diff f v
-diffMaybeToDiff d old =
-  let deletions = mlFilter isNothing d
-      insertions = mlMapMaybe id  $ d `mlDifference` deletions
-  in insertions `mlUnion` (toDiff old `mlDifference` deletions)
-{-# INLINABLE diffMaybeToDiff #-}
+appliedDiffToKeyValueSet :: Diffable f => Diff f v -> f v -> KeyValueSet f v
+appliedDiffToKeyValueSet d old =
+  let deletions = slFilter isNothing d
+      insertions = slMapMaybe id  $ d `slDifference` deletions
+  in insertions `slUnion` (toKeyValueSet old `slDifference` deletions)
+{-# INLINABLE appliedDiffToKeyValueSet #-}
 
-alignDiffNoEq :: (Diffable f, Align (Diff f)) => f v -> f v -> Diff f (Maybe v)
-alignDiffNoEq old new =  flip fmap (align (toDiff old) (toDiff new)) $ \case
+alignDiffNoEq :: (Diffable f, Align (KeyValueSet f)) => f v -> f v -> Diff f v
+alignDiffNoEq old new =  flip fmap (align (toKeyValueSet old) (toKeyValueSet new)) $ \case
   This _ -> Nothing -- delete
   That x -> Just x -- add
   These _ x -> Just x -- might be a change so add
 {-# INLINABLE alignDiffNoEq #-}
 
-alignMapLikeDiff :: (Diffable f, Align (Diff f), MapLike (Diff f), Eq v) => f v -> f v -> Diff f (Maybe v)
-alignMapLikeDiff old new = flip mlMapMaybe (align (toDiff old) (toDiff new)) $ \case
+alignDiff :: (Diffable f, Align (KeyValueSet f), Eq v) => f v -> f v -> Diff f v
+alignDiff old new = flip slMapMaybe (align (toKeyValueSet old) (toKeyValueSet new)) $ \case
   This _ -> Just Nothing -- delete
   That x -> Just $ Just x -- add
   These x y -> if x == y then Nothing else Just $ Just y
-{-# INLINABLE alignMapLikeDiff #-}
+{-# INLINABLE alignDiff #-}
 
-alignMapLikeDiffOnlyKeyChanges :: (Diffable f, Align (Diff f), MapLike (Diff f)) => f v -> f v -> Diff f (Maybe v)
-alignMapLikeDiffOnlyKeyChanges old new = flip mlMapMaybe (align (toDiff old) (toDiff new)) $ \case
+alignDiffOnlyKeyChanges :: (Diffable f, Align (KeyValueSet f)) => f v -> f v -> Diff f v
+alignDiffOnlyKeyChanges old new = flip slMapMaybe (align (toKeyValueSet old) (toKeyValueSet new)) $ \case
   This _ -> Just Nothing
   These _ _ -> Nothing
   That n -> Just $ Just n
-{-# INLINABLE alignMapLikeDiffOnlyKeyChanges #-}
+{-# INLINABLE alignDiffOnlyKeyChanges #-}
   
-mapLikeEditDiffLeavingDeletes :: (Diffable f, MapLike (Diff f)) => Proxy f -> Diff f (Maybe v) -> Diff f b -> Diff f (Maybe v)
-mapLikeEditDiffLeavingDeletes _ da db =
+defaultEditDiffLeavingDeletes :: Diffable f => Proxy f -> Diff f v -> KeyValueSet f b -> Diff f v
+defaultEditDiffLeavingDeletes _ da db =
   let relevantPatch p _ = case p of
         Nothing -> Just Nothing -- it's a delete
         Just _  -> Nothing -- remove from diff
-  in mlDifferenceWith relevantPatch da db
-{-# INLINABLE mapLikeEditDiffLeavingDeletes #-}
+  in slDifferenceWith relevantPatch da db
+{-# INLINABLE defaultEditDiffLeavingDeletes #-}

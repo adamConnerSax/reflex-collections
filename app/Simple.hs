@@ -95,35 +95,31 @@ reorderingList listDyn =
 -- Managed collection when a ~ c
 simpleManagedCollection :: ( ReflexConstraints t m
                            , Monoid (f a)
-                           , RC.MapLike (RC.Diff f)
                            , RC.Patchable f
                            , RC.FannableC f a
                            , RC.Mergeable f
-                           , RC.SequenceableWithEventC t f b
-                           , Show (RC.Diff f b)
-                           , Show (RC.Diff f (Maybe a)))
-  => (RC.Diff f a -> RC.Diff f b -> RC.Diff f (Maybe a)) -- updates to input collection which are not managed by the per-item widgets
-  -> (RC.Diff f a -> RC.Diff f b -> RC.Diff f (Maybe a)) -- all updates to the output collection
+                           , RC.SequenceableWithEventC t f b)
+  => (RC.KeyValueSet f a -> RC.KeyValueSet f b -> RC.Diff f a) -- updates to input collection which are not managed by the widgets
+  -> (RC.KeyValueSet f a -> RC.KeyValueSet f b -> RC.Diff f a) -- all updates to the output collection
   -> (RC.Key f -> a -> R.Event t a -> m (R.Event t b))
   -> R.Dynamic t (f a)
   -> m (R.Dynamic t (f a))
-simpleManagedCollection = managedCollection id updateGivenDiff where
-  updateGivenDiff :: (RC.Diffable f, RC.MapLike (RC.Diff f)) => RC.Diff f a -> f a -> RC.Diff f (Maybe a)
-  updateGivenDiff dfa fa = RC.mlUnion (Just <$> RC.toDiff fa) (Nothing <$ dfa) -- NB: mlUnion is left biased
+simpleManagedCollection = managedCollection id updateKeyValueSet where
+  updateKeyValueSet :: RC.Diffable f => RC.KeyValueSet f a -> f a -> RC.Diff f a
+  updateKeyValueSet dfa fa = RC.slUnion (Just <$> RC.toKeyValueSet fa) (Nothing <$ dfa) -- NB: mlUnion is left biased
 
 
 -- we need a bunch of reflex constraints and a bunch of collection constraints
 managedCollection :: forall t m f a b c. ( ReflexConstraints t m
                                          , Monoid (f a)
-                                         , RC.MapLike (RC.Diff f)
                                          , RC.Patchable f
                                          , RC.FannableC f a
                                          , RC.Mergeable f
                                          , RC.SequenceableWithEventC t f b)
   => (f a -> f c)
-  -> (RC.Diff f c -> f a -> RC.Diff f (Maybe a))
-  -> (RC.Diff f c -> RC.Diff f b -> RC.Diff f (Maybe a)) -- updates to input collection which are not managed by the per-item widgets
-  -> (RC.Diff f c -> RC.Diff f b -> RC.Diff f (Maybe c)) -- all updates to the output collection
+  -> (RC.KeyValueSet f c -> f a -> RC.Diff f a)
+  -> (RC.KeyValueSet f c -> RC.KeyValueSet f b -> RC.Diff f a) -- updates to input collection which are not managed by the per-item widgets
+  -> (RC.KeyValueSet f c -> RC.KeyValueSet f b -> RC.Diff f c) -- all updates to the output collection
   -> (RC.Key f -> a -> R.Event t a -> m (R.Event t b))
   -> R.Dynamic t (f a)
   -> m (R.Dynamic t (f c))
@@ -134,11 +130,9 @@ managedCollection faTofc updateFromInput updateStructure updateAll itemWidget fa
       newInputFaEv = R.leftmost [R.updated faDyn, tag (R.current faDyn) postBuild]
       dfMaNewInputEv = R.attachWith updateFromInput (R.current curFcDiffDyn) newInputFaEv
       dfMcFromWidgetsEv = R.attachWith updateAll (R.current curFcDiffDyn) diffBEv
-      curFcDiffEv = R.attachWith (RC.mlDifferenceWith (const id)) (R.current curFcDiffDyn) dfMcFromWidgetsEv
-  curFcDiffDyn <- R.buildDynamic (R.sample . R.current . fmap (RC.toDiff . faTofc) $ faDyn) $ R.leftmost [curFcDiffEv, RC.toDiff . faTofc <$> newInputFaEv]
-  return $ (RC.fromFullDiff <$> curFcDiffDyn)
-
-
+      curFcDiffEv = R.attachWith (RC.slDifferenceWith (const id)) (R.current curFcDiffDyn) dfMcFromWidgetsEv
+  curFcDiffDyn <- R.buildDynamic (R.sample . R.current . fmap (RC.toKeyValueSet . faTofc) $ faDyn) $ R.leftmost [curFcDiffEv, RC.toKeyValueSet . faTofc <$> newInputFaEv]
+  return $ (RC.fromCompleteKeyValueSet <$> curFcDiffDyn)
 
 buttonNoSubmit :: DomBuilder t m => T.Text -> m (Event t ())
 buttonNoSubmit t = (domEvent Click . fst) <$> elAttr' "button" ("type" =: "button") (text t)

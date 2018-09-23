@@ -13,7 +13,7 @@ module Reflex.Collections.WithEmpty
   ) where
 
 import Reflex.Collections.KeyedCollection (KeyedCollection(..))
-import Reflex.Collections.Diffable (MapLike(..), Diffable(..))
+import Reflex.Collections.Diffable (SetLike(..), Diffable(..), Diff)
 import Reflex.Collections.ToPatchType (SeqTypes(..), ToPatchType(..))
 
 import Reflex (fmapMaybe)
@@ -48,19 +48,19 @@ instance KeyedCollection f => KeyedCollection (WithEmpty f) where
   fromKeyValueList [] = Empty
   fromKeyValueList kvs = NonEmpty $ fromKeyValueList kvs
   
-instance (Diffable f, MapLike (Diff f)) => Diffable (WithEmpty f) where
-  type Diff (WithEmpty f) = Diff f
-  toDiff Empty = mlEmpty
-  toDiff (NonEmpty t) = toDiff t
-  fromFullDiff d = if mlNull d then Empty else NonEmpty $ fromFullDiff d
+instance Diffable f => Diffable (WithEmpty f) where
+  type KeyValueSet (WithEmpty f) = KeyValueSet f
+  toKeyValueSet Empty = slEmpty
+  toKeyValueSet (NonEmpty t) = toKeyValueSet t
+  fromCompleteKeyValueSet d = if slNull d then Empty else NonEmpty $ fromCompleteKeyValueSet d
   diffNoEq = liftDiff diffNoEq
   diff = liftDiff diff
   diffOnlyKeyChanges = liftDiff diffOnlyKeyChanges
 
-liftDiff :: (Diffable f, MapLike (Diff f)) => (f v -> f v -> Diff f (Maybe v)) -> WithEmpty f v -> WithEmpty f v -> Diff f (Maybe v)
-liftDiff _ Empty Empty = mlEmpty
-liftDiff _ Empty (NonEmpty new) = Just <$> toDiff new
-liftDiff _ (NonEmpty old) Empty = const Nothing <$> toDiff old
+liftDiff :: Diffable f => (f v -> f v -> Diff f v) -> WithEmpty f v -> WithEmpty f v -> Diff f v
+liftDiff _ Empty Empty = slEmpty
+liftDiff _ Empty (NonEmpty new) = Just <$> toKeyValueSet new
+liftDiff _ (NonEmpty old) Empty = const Nothing <$> toKeyValueSet old
 liftDiff dF (NonEmpty old) (NonEmpty new) = dF old new 
 
 instance SeqTypes f => SeqTypes (WithEmpty f) where
@@ -72,7 +72,7 @@ instance SeqTypes f => SeqTypes (WithEmpty f) where
 -- The following use of Data.Constraint.Forall seems necessary here.
 -- Without it, GHC cannot resolve the SeqTypes f v constraint.  Which it needs to call typeclass methods in `SeqTypes (With f) v`
 -- This will all be much nicer with quantified constraints.
-instance (MapLike (Diff f), ToPatchType f, SeqTypes f) => ToPatchType (WithEmpty f) where
+instance (ToPatchType f, SeqTypes f) => ToPatchType (WithEmpty f) where
 --  type FanKey (WithEmpty f) = FanKey f
   type CollectionEventSelector (WithEmpty f) = CollectionEventSelector f
   {-# INLINABLE withFunctorToSeqType #-}

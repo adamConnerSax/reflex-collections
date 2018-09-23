@@ -37,7 +37,8 @@ import           Reflex.Collections.Sequenceable    (DMapConst2 (..),
 
 
 import           Reflex.Collections.Diffable        (Diffable (..),
-                                                     MapLike (mlMapMaybe))
+                                                     Diff,
+                                                     SetLike (slMapMaybe))
 
 
 import qualified Reflex                             as R
@@ -79,7 +80,7 @@ distributeOverDynPure = fmap unsafeFromSeqType . sequenceDynamic . withFunctorTo
 {-# INLINABLE distributeOverDynPure #-}
 
 -- | Generalizes "mergeMap" to anything with ToPatchType where the Patches are Sequenceable.
-mergeOver :: forall t f v. (R.Reflex t, Mergeable f, SequenceC (SeqType f) v) => f (R.Event t v) -> R.Event t (Diff f v)
+mergeOver :: forall t f v. (R.Reflex t, Mergeable f, SequenceC (SeqType f) v) => f (R.Event t v) -> R.Event t (KeyValueSet f v)
 mergeOver fEv =
   let id2 = const id :: (k -> R.Event t v -> R.Event t v)
   in fmap (fromSeqType (Proxy :: Proxy f)) . mergeEvents $ functorMappedToSeqType id2 fEv
@@ -101,12 +102,12 @@ class SeqTypes (f :: Type -> Type) where
 class (KeyedCollection f, Diffable f) => ToPatchType (f :: Type -> Type) where
   type CollectionEventSelector f :: Type -> Type -> Type
   withFunctorToSeqType :: (SeqTypes f, Functor g) => f (g v) -> SeqType f v g
-  fromSeqType :: Proxy f -> SeqType f a Identity -> Diff f a
+  fromSeqType :: Proxy f -> SeqType f a Identity -> KeyValueSet f a
   unsafeFromSeqType :: SeqType f a Identity -> f a -- may fail for some types if keys are missing
-  makePatchSeq :: Functor g => Proxy f -> (Key f -> v -> g u) -> Diff f (Maybe v) -> SeqPatchType f u g
+  makePatchSeq :: Functor g => Proxy f -> (Key f -> v -> g u) -> Diff f v -> SeqPatchType f u g
   fanCollection :: (R.Reflex t, SequenceC (SeqType f) v) => R.Event t (f v) -> CollectionEventSelector f t v
   selectCollection :: (R.Reflex t, SequenceC (SeqType f) v) => Proxy f -> CollectionEventSelector f t v -> Key f -> R.Event t v 
-  fanDiffMaybe :: (R.Reflex t, SequenceC (SeqType f) v) => Proxy f -> R.Event t (Diff f (Maybe v)) -> CollectionEventSelector f t v
+  fanDiffMaybe :: (R.Reflex t, SequenceC (SeqType f) v) => Proxy f -> R.Event t (Diff f v) -> CollectionEventSelector f t v
 
 -- The kind of "DMapConst2EventSelector k" matches "R.EventSelectorInt" so we can be polymorphic between them
 newtype DMapConst2EventSelector k t a =
@@ -131,13 +132,13 @@ instance Ord k => ToPatchType (Map k) where
   {-# INLINABLE fromSeqType #-}
   fromSeqType _ = dmapToMap . unDMapConst2
   {-# INLINABLE unsafeFromSeqType #-}
-  unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy (Map k))
+  unsafeFromSeqType = fromCompleteKeyValueSet . fromSeqType (Proxy :: Proxy (Map k))
   {-# INLINABLE fanCollection #-}
   fanCollection =  DMapConst2EventSelector . R.fan . fmap mapToDMap
   {-# INLINABLE selectCollection #-}
   selectCollection _ es k = R.select (unDMapConst2EventSelector es) $ Const2 k 
   {-# INLINABLE fanDiffMaybe #-}
-  fanDiffMaybe _ = DMapConst2EventSelector . R.fan . fmap (keyedCollectionToDMap . mlMapMaybe id)
+  fanDiffMaybe _ = DMapConst2EventSelector . R.fan . fmap (keyedCollectionToDMap . slMapMaybe id)
 
 instance Ord k => SeqTypes (HashMap k) where
   type SeqType (HashMap k) = DMapConst2 k
@@ -155,13 +156,13 @@ instance (Ord k, Eq k, Hashable k) => ToPatchType (HashMap k) where
   {-# INLINABLE fromSeqType #-}
   fromSeqType _ = dmapToKeyedCollection . unDMapConst2
   {-# INLINABLE unsafeFromSeqType #-}
-  unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy (HashMap k))
+  unsafeFromSeqType = fromCompleteKeyValueSet . fromSeqType (Proxy :: Proxy (HashMap k))
   {-# INLINABLE fanCollection #-}
   fanCollection =  DMapConst2EventSelector . R.fan . fmap keyedCollectionToDMap
   {-# INLINABLE selectCollection #-}
   selectCollection _ es k = R.select (unDMapConst2EventSelector es) $ Const2 k 
   {-# INLINABLE fanDiffMaybe #-}
-  fanDiffMaybe _ = DMapConst2EventSelector . R.fan . fmap (keyedCollectionToDMap . mlMapMaybe id)
+  fanDiffMaybe _ = DMapConst2EventSelector . R.fan . fmap (keyedCollectionToDMap . slMapMaybe id)
   
 instance SeqTypes Tree where
   type SeqType Tree = DMapConst2 (S.Seq Int)
@@ -179,13 +180,13 @@ instance ToPatchType Tree where
   {-# INLINABLE fromSeqType #-}
   fromSeqType _ = dmapToKeyedCollection . unDMapConst2
   {-# INLINABLE unsafeFromSeqType #-}
-  unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy Tree)
+  unsafeFromSeqType = fromCompleteKeyValueSet . fromSeqType (Proxy :: Proxy Tree)
   {-# INLINABLE fanCollection #-}
   fanCollection =  DMapConst2EventSelector . R.fan . fmap keyedCollectionToDMap
   {-# INLINABLE selectCollection #-}
   selectCollection _ es k = R.select (unDMapConst2EventSelector es) $ Const2 k 
   {-# INLINABLE fanDiffMaybe #-}
-  fanDiffMaybe _ = DMapConst2EventSelector . R.fan . fmap (keyedCollectionToDMap . mlMapMaybe id)
+  fanDiffMaybe _ = DMapConst2EventSelector . R.fan . fmap (keyedCollectionToDMap . slMapMaybe id)
 
 -- IntMap, [], Seq, and Array use IntMap for their merging and sequencing
 
@@ -201,7 +202,7 @@ instance ToPatchType IntMap where
   {-# INLINABLE fromSeqType #-}
   fromSeqType _ = fmap runIdentity . getCompose . unCI
   {-# INLINABLE unsafeFromSeqType #-}
-  unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy IntMap)
+  unsafeFromSeqType = fromCompleteKeyValueSet . fromSeqType (Proxy :: Proxy IntMap)
   {-# INLINABLE makePatchSeq #-}
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv))
@@ -210,7 +211,7 @@ instance ToPatchType IntMap where
   {-# INLINABLE selectCollection #-}
   selectCollection _ es n = R.selectInt es n 
   {-# INLINABLE fanDiffMaybe #-}
-  fanDiffMaybe _ = R.fanInt . fmap (mlMapMaybe id)
+  fanDiffMaybe _ = R.fanInt . fmap (slMapMaybe id)
 
 instance SeqTypes [] where
   type SeqType [] = ComposedIntMap
@@ -224,7 +225,7 @@ instance ToPatchType [] where
   {-# INLINABLE fromSeqType #-}
   fromSeqType _ = fmap runIdentity . getCompose . unCI
   {-# INLINABLE unsafeFromSeqType #-}
-  unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy [])
+  unsafeFromSeqType = fromCompleteKeyValueSet . fromSeqType (Proxy :: Proxy [])
   {-# INLINABLE makePatchSeq #-}
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> (fmap (h n) mv))
@@ -247,7 +248,7 @@ instance ToPatchType S.Seq where
   {-# INLINABLE fromSeqType #-}
   fromSeqType _ = fmap runIdentity . getCompose . unCI
   {-# INLINABLE unsafeFromSeqType #-}
-  unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy S.Seq)
+  unsafeFromSeqType = fromCompleteKeyValueSet . fromSeqType (Proxy :: Proxy S.Seq)
   {-# INLINABLE makePatchSeq #-}
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> fmap (h n) mv)
@@ -275,7 +276,7 @@ instance (Enum k, Bounded k, Ix k) => ToPatchType (Array k) where
   {-# INLINABLE fromSeqType #-}
   fromSeqType _ = fmap runIdentity . getCompose . unCI
   {-# INLINABLE unsafeFromSeqType #-}
-  unsafeFromSeqType = fromFullDiff . fromSeqType (Proxy :: Proxy (Array k))
+  unsafeFromSeqType = fromCompleteKeyValueSet . fromSeqType (Proxy :: Proxy (Array k))
   {-# INLINABLE makePatchSeq #-}
   makePatchSeq _ h =
     ComposedPatchIntMap . Compose . R.PatchIntMap . mapWithKey (\n mv -> fmap (h $ toEnum n) mv)
