@@ -35,7 +35,7 @@ There are several typeclasses, each of which abstracts out a piece of the functi
 There are three typeclasses representing types that Reflex can efficiently merge and sequence incrementally.  You are unlikely to want to implement any of these for a new type since it requires deep support within Reflex itself, in the Patch type and Adjustable classes.  If types are added there, they should be added here as well:
 1. A typeclass supporting efficient "merging" for the `Reflex.Event` type. 
 That is, turning a collection of events into an event of a collection with members only for fired events: 
-[`Reflex.Collections.Sequenceable.ReflexMergeable`](./src/Reflex/Collections/ReflexSequenceable.hs)) 
+[`Reflex.Collections.Sequenceable.ReflexMergeable`](src/Reflex/Collections/ReflexSequenceable.hs)) 
 (with instances for [`DMap`](https://hackage.haskell.org/package/dependent-map-0.2.4.0) 
 and [`IntMap`](https://hackage.haskell.org/package/containers-0.6.0.1))
 2. A typeclass supporting efficient sequencing of Dynamics (`f (Dynamic t a) -> Dynamic t (f a)`): 
@@ -44,10 +44,10 @@ and [`IntMap`](https://hackage.haskell.org/package/containers-0.6.0.1))
 and [`IntMap`](https://hackage.haskell.org/package/containers-0.6.0.1))
 3. A typeclass with a collection and patch type supporting efficient sequencing of a collection 
 and patch as well as reconstruction of that pair into a `Reflex.Dynamic`: 
-[`Reflex.Collections.Sequenceable.PatchSequenceable`](./src/Reflex/Collections/ReflexSequenceable.hs) 
+[`Reflex.Collections.Sequenceable.PatchSequenceable`](src/Reflex/Collections/ReflexSequenceable.hs) 
 (with an instance for the pair [`DMap`](https://hackage.haskell.org/package/dependent-map-0.2.4.0) 
 and [`PatchDMap`](https://github.com/reflex-frp/reflex/blob/develop/src/Reflex/Patch/DMap.hs) 
-as well the pair [`ComposedIntMap` and `ComposedPatchIntMap`](./src/Reflex/Collections/ComposedIntMap.hs))
+as well the pair [`ComposedIntMap` and `ComposedPatchIntMap`](src/Reflex/Collections/ComposedIntMap.hs))
 
 And there are three typeclasses to support mapping of collections into and out of the reflex-efficient types above:
 1. A class defining the key type for each collection, and implementing mapWithKey and to/from lists of key/value pairs: 
