@@ -37,6 +37,7 @@ import           Text.Read                        (Read, readMaybe)
 
 
 import qualified Reflex.Collections.Collections   as RC
+import qualified Reflex.Collections.SelfEditingCollection as RC
 
 -- NB: This is just for warp.
 main::IO ()
@@ -90,49 +91,7 @@ widgetInputDiffFromChanges curAsIntMap changes = F.foldMap (diffFromChangeNonEdi
 reorderingList :: (Show a, Read a, ReflexConstraints t m) => R.Dynamic t [a] -> m (R.Dynamic t [a])
 reorderingList listDyn =
   let widget n a0 aEv = el "div" $ R.holdDyn a0 aEv >>= listElementWidget n
-  in simpleManagedCollection widgetInputDiffFromChanges resultDiffFromChanges widget listDyn
-
--- Managed collection when a ~ c
-simpleManagedCollection :: ( ReflexConstraints t m
-                           , Monoid (f a)
-                           , RC.Patchable f
-                           , RC.FannableC f a
-                           , RC.Mergeable f
-                           , RC.SequenceableWithEventC t f b)
-  => (RC.KeyValueSet f a -> RC.KeyValueSet f b -> RC.Diff f a) -- updates to input collection which are not managed by the widgets
-  -> (RC.KeyValueSet f a -> RC.KeyValueSet f b -> RC.Diff f a) -- all updates to the output collection
-  -> (RC.Key f -> a -> R.Event t a -> m (R.Event t b))
-  -> R.Dynamic t (f a)
-  -> m (R.Dynamic t (f a))
-simpleManagedCollection = managedCollection id updateKeyValueSet where
-  updateKeyValueSet :: RC.Diffable f => RC.KeyValueSet f a -> f a -> RC.Diff f a
-  updateKeyValueSet dfa fa = RC.slUnion (Just <$> RC.toKeyValueSet fa) (Nothing <$ dfa) -- NB: mlUnion is left biased
-
-
--- we need a bunch of reflex constraints and a bunch of collection constraints
-managedCollection :: forall t m f a b c. ( ReflexConstraints t m
-                                         , Monoid (f a)
-                                         , RC.Patchable f
-                                         , RC.FannableC f a
-                                         , RC.Mergeable f
-                                         , RC.SequenceableWithEventC t f b)
-  => (f a -> f c)
-  -> (RC.KeyValueSet f c -> f a -> RC.Diff f a)
-  -> (RC.KeyValueSet f c -> RC.KeyValueSet f b -> RC.Diff f a) -- updates to input collection which are not managed by the per-item widgets
-  -> (RC.KeyValueSet f c -> RC.KeyValueSet f b -> RC.Diff f c) -- all updates to the output collection
-  -> (RC.Key f -> a -> R.Event t a -> m (R.Event t b))
-  -> R.Dynamic t (f a)
-  -> m (R.Dynamic t (f c))
-managedCollection faTofc updateFromInput updateStructure updateAll itemWidget faDyn = mdo
-  postBuild <- R.getPostBuild
-  diffBEv <- RC.listViewWithKeyShallowDiff (Proxy :: Proxy f) (R.leftmost [dfMaFromWidgetsEv, dfMaNewInputEv]) itemWidget
-  let dfMaFromWidgetsEv = R.attachWith updateStructure (R.current curFcDiffDyn) diffBEv
-      newInputFaEv = R.leftmost [R.updated faDyn, tag (R.current faDyn) postBuild]
-      dfMaNewInputEv = R.attachWith updateFromInput (R.current curFcDiffDyn) newInputFaEv
-      dfMcFromWidgetsEv = R.attachWith updateAll (R.current curFcDiffDyn) diffBEv
-      curFcDiffEv = R.attachWith (RC.slDifferenceWith (const id)) (R.current curFcDiffDyn) dfMcFromWidgetsEv
-  curFcDiffDyn <- R.buildDynamic (R.sample . R.current . fmap (RC.toKeyValueSet . faTofc) $ faDyn) $ R.leftmost [curFcDiffEv, RC.toKeyValueSet . faTofc <$> newInputFaEv]
-  return $ (RC.fromCompleteKeyValueSet <$> curFcDiffDyn)
+  in RC.simpleSelfEditingCollection widgetInputDiffFromChanges resultDiffFromChanges widget listDyn
 
 buttonNoSubmit :: DomBuilder t m => T.Text -> m (Event t ())
 buttonNoSubmit t = (domEvent Click . fst) <$> elAttr' "button" ("type" =: "button") (text t)

@@ -59,6 +59,7 @@ module Reflex.Collections.Collections
   , listWithKeyShallowDiff
   , listViewWithKeyShallowDiff
   , listViewWithKeyShallowDiffMaybe
+  , listViewWithKeyShallowDiffGeneral
   , selectViewListWithKey
   , selectViewListWithKeyMaybe
   , simplifyDynMaybe

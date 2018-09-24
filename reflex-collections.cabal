@@ -31,6 +31,7 @@ library
   hs-source-dirs: src
   exposed-modules:
                   Reflex.Collections.Collections
+                  Reflex.Collections.SelfEditingCollection
                   Reflex.Collections.ComposedIntMap
                   Reflex.Collections.Sequenceable
                   Reflex.Collections.KeyedCollection
