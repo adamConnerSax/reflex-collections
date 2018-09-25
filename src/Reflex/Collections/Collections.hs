@@ -79,11 +79,11 @@ module Reflex.Collections.Collections
   , Mergeable
   , GCompare
   , SeqTypes
-  , WithEmpty
+  , WithEmpty (..)
   ) where
 
 
-import           Reflex.Collections.Diffable        (Diffable (..), Diff,
+import           Reflex.Collections.Diffable        (Diff, Diffable (..),
                                                      SetLike (..))
 import           Reflex.Collections.KeyedCollection (KeyedCollection (..))
 import           Reflex.Collections.Sequenceable    (PatchSequenceable (..),
