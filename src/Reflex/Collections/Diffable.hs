@@ -21,6 +21,7 @@ module Reflex.Collections.Diffable
     Diffable(..)
   , Diff
   , SetLike(..)
+  , kvSetDiffNoEq
   ) where
 
 import           Reflex.Collections.KeyedCollection (KeyedCollection(..))
@@ -55,7 +56,6 @@ class Functor f => SetLike f where
   slDifferenceWith :: (a -> b -> Maybe a) -> f a -> f b -> f a 
   slFilter :: (a -> Bool) -> f a -> f a
   slMapMaybe :: (a -> Maybe b) -> f a -> f b  -- is this always `mapMaybe f = slFilter (maybe False (const True) . f) `?
-
 
 instance Ord k => SetLike (M.Map k) where
   {-# INLINABLE slEmpty #-}
@@ -115,26 +115,26 @@ instance SetLike IntMap where
 type Diff f a = KeyValueSet f (Maybe a)
 
 class ( KeyedCollection f
-      , KeyedCollection (KeyValueSet f)
-      , SetLike (KeyValueSet f)) => Diffable (f :: Type -> Type) where
+      , KeyedCollection (KeyValueSet f)      
+      , SetLike (KeyValueSet f)
+      , Align (KeyValueSet f)) => Diffable (f :: Type -> Type) where
   type KeyValueSet f :: Type -> Type -- keyed collection of ElemUpdates
   toKeyValueSet :: f a -> KeyValueSet f a
   -- NB: Precondition (that the KeyValueSet is complete) is not checked
   fromCompleteKeyValueSet :: KeyValueSet f a -> f a -- must satisfy (fromFullDiff . toDiff = id)
   applyDiff :: Diff f v -> f v -> f v
   applyDiff d old = fromCompleteKeyValueSet $ appliedDiffToKeyValueSet d old
+  {-# INLINABLE applyDiff #-}
   updateKeyValueSet :: Proxy f -> KeyValueSet f v -> Diff f v -> KeyValueSet f v
-  updateKeyValueSet _ oldKVS d = slMapMaybe id $ slUnion d (Just <$> oldKVS) 
+  updateKeyValueSet _ oldKVS d = slMapMaybe id $ slUnion d (Just <$> oldKVS)
+  {-# INLINABLE updateKeyValueSet #-}
   diffNoEq :: f v -> f v -> Diff f v
-  default diffNoEq :: Align (KeyValueSet f) => f v -> f v -> Diff f v
   diffNoEq = alignDiffNoEq
   {-# INLINABLE diffNoEq #-}
   diff :: Eq v => f v -> f v -> Diff f v
-  default diff :: (Eq v, Align (KeyValueSet f)) => f v -> f v -> Diff f v
   diff = alignDiff
   {-# INLINABLE diff #-}
   diffOnlyKeyChanges :: f v -> f v -> Diff f v
-  default diffOnlyKeyChanges :: Align (KeyValueSet f) => f v -> f v -> Diff f v
   diffOnlyKeyChanges = alignDiffOnlyKeyChanges
   {-# INLINABLE diffOnlyKeyChanges #-}
   editDiffLeavingDeletes :: Proxy f -> Diff f v -> KeyValueSet f b -> Diff f v
@@ -174,16 +174,18 @@ instance (Enum k, Ix k, Bounded k) => Diffable (Array k) where
   applyDiff d old = old A.// fmap (first toEnum) (IM.toAscList $ appliedDiffToKeyValueSet d old)
   {-# INLINABLE applyDiff #-}
   diffNoEq _ new = Just <$> toKeyValueSet new
+  {-# INLINABLE diffNoEq #-}
   diffOnlyKeyChanges _ _ = IM.empty
+  {-# INLINABLE diffOnlyKeyChanges #-}
   editDiffLeavingDeletes _ _ _ = IM.empty
+  {-# INLINABLE editDiffLeavingDeletes #-}
 
 instance Diffable Tree where
   type KeyValueSet Tree = Map (S.Seq Int)
   toKeyValueSet = K.foldMapWithKey M.singleton  --M.froslist . toKeyValueList
   fromCompleteKeyValueSet = fromKeyValueList . M.toAscList 
 
-
--- default implementations for MapLike and Alignable containers  
+-- default implementations
 appliedDiffToKeyValueSet :: Diffable f => Diff f v -> f v -> KeyValueSet f v
 appliedDiffToKeyValueSet d old =
   let deletions = slFilter isNothing d
@@ -191,31 +193,43 @@ appliedDiffToKeyValueSet d old =
   in insertions `slUnion` (toKeyValueSet old `slDifference` deletions)
 {-# INLINABLE appliedDiffToKeyValueSet #-}
 
-alignDiffNoEq :: (Diffable f, Align (KeyValueSet f)) => f v -> f v -> Diff f v
-alignDiffNoEq old new =  flip fmap (align (toKeyValueSet old) (toKeyValueSet new)) $ \case
-  This _ -> Nothing -- delete
-  That x -> Just x -- add
-  These _ x -> Just x -- might be a change so add
+alignDiffNoEq :: forall f v. Diffable f => f v -> f v -> Diff f v
+alignDiffNoEq old new =  kvSetDiffNoEq (Proxy :: Proxy f) (toKeyValueSet old) (toKeyValueSet new)
 {-# INLINABLE alignDiffNoEq #-}
 
-alignDiff :: (Diffable f, Align (KeyValueSet f), Eq v) => f v -> f v -> Diff f v
-alignDiff old new = flip slMapMaybe (align (toKeyValueSet old) (toKeyValueSet new)) $ \case
-  This _ -> Just Nothing -- delete
-  That x -> Just $ Just x -- add
-  These x y -> if x == y then Nothing else Just $ Just y
+kvSetDiffNoEq :: Diffable f => Proxy f -> KeyValueSet f a -> KeyValueSet f a -> Diff f a
+kvSetDiffNoEq _ kvOld kvNew = flip fmap (align kvOld kvNew) $ \case
+  This _ -> Nothing -- in old but not new, Delete
+  That x -> Just x -- in new but not old, add
+  These _ x -> Just x -- in both, update
+{-# INLINABLE kvSetDiffNoEq #-}  
+
+alignDiff :: forall f v. (Diffable f, Eq v) => f v -> f v -> Diff f v
+alignDiff old new = kvSetDiff (Proxy :: Proxy f) (toKeyValueSet old) (toKeyValueSet new)
 {-# INLINABLE alignDiff #-}
 
-alignDiffOnlyKeyChanges :: (Diffable f, Align (KeyValueSet f)) => f v -> f v -> Diff f v
-alignDiffOnlyKeyChanges old new = flip slMapMaybe (align (toKeyValueSet old) (toKeyValueSet new)) $ \case
-  This _ -> Just Nothing
-  These _ _ -> Nothing
-  That n -> Just $ Just n
+kvSetDiff :: (Eq v, Diffable f) => Proxy f -> KeyValueSet f v -> KeyValueSet f v -> Diff f v
+kvSetDiff _ kvOld kvNew = flip slMapMaybe (align kvOld kvNew) $ \case
+  This _ -> Just Nothing -- in old but not new, delete
+  That x -> Just $ Just x -- in new but not old, add
+  These x y -> if x == y then Nothing else Just $ Just y -- in both, update if change
+{-# INLINABlE kvSetDiff #-}
+
+alignDiffOnlyKeyChanges :: forall f v. Diffable f => f v -> f v -> Diff f v
+alignDiffOnlyKeyChanges old new = kvSetDiffOnlyKeyChanges (Proxy :: Proxy f) (toKeyValueSet old) (toKeyValueSet new)
 {-# INLINABLE alignDiffOnlyKeyChanges #-}
+
+kvSetDiffOnlyKeyChanges :: Diffable f => Proxy f -> KeyValueSet f v -> KeyValueSet f v -> Diff f v
+kvSetDiffOnlyKeyChanges _ kvOld kvNew = flip slMapMaybe (align kvOld kvNew) $ \case
+  This _ -> Just Nothing -- in old but not new, delete
+  These _ _ -> Nothing -- in both, ignore
+  That n -> Just $ Just n -- in new but not old, add
+{-# INLINABLE kvSetDiffOnlyKeyChanges #-}  
   
 defaultEditDiffLeavingDeletes :: Diffable f => Proxy f -> Diff f v -> KeyValueSet f b -> Diff f v
-defaultEditDiffLeavingDeletes _ da db =
+defaultEditDiffLeavingDeletes _ da kvb =
   let relevantPatch p _ = case p of
         Nothing -> Just Nothing -- it's a delete
         Just _  -> Nothing -- remove from diff
-  in slDifferenceWith relevantPatch da db
+  in slDifferenceWith relevantPatch da kvb
 {-# INLINABLE defaultEditDiffLeavingDeletes #-}
