@@ -47,14 +47,14 @@ simpleSelfEditingCollection = selfEditingCollection id diffFromKVAndNew where
 -- the authoritative value as well as an event of just internal changes
 -- anything complex should be built around this.
 selfEditingCollectionWithChanges :: forall t m f a b c. ( R.Reflex t
-                                               , R.MonadHold t m
-                                               , R.Adjustable t m
-                                               , R.PostBuild t m
-                                               , MonadFix m
-                                               , RC.Patchable f
-                                               , RC.FannableC f a
-                                               , RC.Mergeable f
-                                               , RC.SequenceableWithEventC t f b)
+                                                        , R.MonadHold t m
+                                                        , R.Adjustable t m
+                                                        , R.PostBuild t m
+                                                        , MonadFix m
+                                                        , RC.Patchable f
+                                                        , RC.FannableC f a
+                                                        , RC.Mergeable f
+                                                        , RC.SequenceableWithEventC t f b)
   => (RC.Diff f a -> RC.Diff f c)
   -> (RC.KeyValueSet f c -> RC.KeyValueSet f b -> RC.Diff f a) -- updates to input collection which are not managed by the per-item widgets
   -> (RC.KeyValueSet f c -> RC.KeyValueSet f b -> RC.Diff f c) -- all updates to the output collection
