@@ -31,15 +31,16 @@ import qualified Data.Key              as K
 import           Data.List            (groupBy, sortBy)
 import           Data.Monoid          ()
 
-class Functor f => KeyedCollection (f :: Type -> Type) where
+class (Functor f, K.Keyed f, K.FoldableWithKey f) => KeyedCollection (f :: Type -> Type) where
   type Key f :: Type
   mapWithKey :: (Key f -> a -> b) -> f a -> f b
-  default mapWithKey :: (K.Keyed f, Key f ~ K.Key f) => (Key f -> a -> b) -> f a -> f b
+  default mapWithKey :: (Key f ~ K.Key f) => (Key f -> a -> b) -> f a -> f b
   mapWithKey = K.mapWithKey
   toKeyValueList :: f v -> [(Key f, v)]
-  default toKeyValueList :: (K.FoldableWithKey f, K.Key f ~ Key f) => f v -> [(Key f, v)]
+  default toKeyValueList :: (K.Key f ~ Key f) => f v -> [(Key f, v)]
   toKeyValueList = K.toKeyedList
   fromKeyValueList :: [(Key f ,v)] -> f v -- assumes Keys are distinct
+  
   
 instance Ord k => KeyedCollection (M.Map k) where
   type Key (M.Map k) = k

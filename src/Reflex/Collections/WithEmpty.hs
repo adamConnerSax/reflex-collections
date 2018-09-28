@@ -20,6 +20,8 @@ import Reflex (fmapMaybe)
 import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
 import Data.Functor.Identity (Identity)
+import Data.Monoid (mempty)
+import qualified Data.Key as K
 
 data WithEmpty (f :: Type -> Type) (a :: Type) = Empty | NonEmpty (f a)
 
@@ -30,6 +32,16 @@ instance Functor f => Functor (WithEmpty f) where
 instance Foldable f => Foldable (WithEmpty f) where
   foldMap _ Empty = mempty
   foldMap f (NonEmpty x) = foldMap f x
+
+type instance K.Key (WithEmpty f) = K.Key f
+
+instance K.Keyed f => K.Keyed (WithEmpty f) where
+  mapWithKey _ Empty = Empty
+  mapWithKey h (NonEmpty fa) = NonEmpty  $ K.mapWithKey h fa
+
+instance K.FoldableWithKey f => K.FoldableWithKey (WithEmpty f) where
+  foldMapWithKey _ Empty = mempty
+  foldMapWithKey h (NonEmpty fa) = K.foldMapWithKey h fa
 
 instance Show (f a) => Show (WithEmpty f a) where
   show Empty = "Empty"
