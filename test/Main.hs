@@ -7,13 +7,13 @@ module Main where
 import           Control.Monad                      (replicateM)
 import           Data.Array                         (Array, Ix, listArray)
 import           Data.IntMap                        (IntMap)
+import qualified Data.Key                           as K
 import           Data.Map                           (Map)
+import           Data.Proxy                         (Proxy (..))
 import           Data.Sequence                      (Seq)
 import           Data.Tree                          (Tree)
-import           Data.Proxy                         (Proxy(..))
 
-import           Reflex.Collections.Diffable        (Diffable (..),
-                                                     Diff,
+import           Reflex.Collections.Diffable        (Diff, Diffable (..),
                                                      SetLike (..))
 import           Reflex.Collections.KeyedCollection (KeyedCollection (..))
 import           Reflex.Collections.WithEmpty       (WithEmpty (..))
@@ -58,7 +58,12 @@ prop_Diffable_DiffLaw :: (Diffable f, Eq a, Eq (Key f)) => f a -> f a -> Bool
 prop_Diffable_DiffLaw a b = equalKC b (applyDiff (diff a b) a)
 
 -- an array that must have values for all keys
-newtype TotalArray k a = TotalArray { unTA :: Array k a } deriving (Functor, Show)
+newtype TotalArray k a = TotalArray { unTA :: Array k a } deriving (Functor, Show, Foldable, K.Keyed)
+
+type instance K.Key (TotalArray k) = K.Key (Array k)
+
+instance Ix k => K.FoldableWithKey (TotalArray k) where
+  foldMapWithKey h (TotalArray a) = K.foldMapWithKey h a
 
 instance Ix k => KeyedCollection (TotalArray k) where
   type Key (TotalArray k) = Key (Array k)
