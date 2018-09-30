@@ -62,6 +62,7 @@ module Reflex.Collections.Collections
   , listViewWithKeyShallowDiffGeneral
   , selectViewListWithKey
   , selectViewListWithKeyMaybe
+  , selectViewListWithKeyGeneral
   , simplifyDynMaybe
   , maybeHelper
   , SequenceableC

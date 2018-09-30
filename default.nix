@@ -8,7 +8,7 @@ in
 
   shells = {
    ghc = ["reflex-collections"];
-   ghc8_2_1 = ["reflex-collections"];
+   ghc8_2 = ["reflex-collections"];
    ghcjs = ["reflex-collections"];
   };
 

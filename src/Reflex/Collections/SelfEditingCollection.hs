@@ -1,6 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE RecursiveDo           #-}
 {-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE Rank2Types #-}
 -- | This module provides functions to efficiently manage collections of widgets where
 -- events fired by the widgets may change the structure of the collection itself.
 -- The core function, selfEditingCollection, will work with any `f :: Type -> Type`
@@ -63,15 +64,15 @@ selfEditingCollectionWithChanges :: forall t m f a b c. ( R.Reflex t
   -> R.Event t (RC.Diff f a)
   -> m (R.Dynamic t (RC.KeyValueSet f c), R.Event t (RC.Diff f c)) -- KeyValueSet is current value; event only fires on internal changes
 selfEditingCollectionWithChanges dfaTodfc updateStructure updateAll itemWidget fa dfaEv = mdo
-  dfbEv <- RC.listViewWithKeyShallowDiffGeneral fa (R.leftmost [dfaFromWidgetsEv, dfaEv]) itemWidget
-  let dfaFromWidgetsEv = R.attachWith updateStructure (R.current curFcKVDyn) dfbEv
-      dfcFromWidgetsEv = R.attachWith updateAll (R.current curFcKVDyn) dfbEv
+  kvbEv <- RC.listViewWithKeyShallowDiffGeneral fa (R.leftmost [dfaFromWidgetsEv, dfaEv]) itemWidget
+  let dfaFromWidgetsEv = R.attachWith updateStructure (R.current curFcKVDyn) kvbEv
+      dfcFromWidgetsEv = R.attachWith updateAll (R.current curFcKVDyn) kvbEv
       curFcKVEv = R.attachWith (RC.slDifferenceWith (const id)) (R.current curFcKVDyn) dfcFromWidgetsEv
       newInputFcKV = R.attachWith (RC.updateKeyValueSet (Proxy :: Proxy f)) (R.current curFcKVDyn) (dfaTodfc <$> dfaEv)      
   curFcKVDyn <- R.holdDyn (diffMapToKVMap (Proxy :: Proxy f) dfaTodfc . RC.toKeyValueSet $ fa) $ R.leftmost [newInputFcKV, curFcKVEv]
   return (curFcKVDyn, dfcFromWidgetsEv)
 
-{-
+
 selectSelfEditingCollectionWithChanges :: forall t m f a b c. ( R.Reflex t
                                                               , R.MonadHold t m
                                                               , R.Adjustable t m
@@ -80,27 +81,28 @@ selectSelfEditingCollectionWithChanges :: forall t m f a b c. ( R.Reflex t
                                                               , RC.Patchable f
                                                               , RC.FannableC f a
                                                               , RC.Mergeable f
-                                                              , Ord (Key f)
+                                                              , Ord (RC.Key f)
                                                               , RC.SequenceableWithEventC t f b)
   => (RC.Diff f a -> RC.Diff f c)
   -> (RC.KeyValueSet f c -> RC.KeyValueSet f b -> RC.Diff f a) -- updates to input collection which are not managed by the per-item widgets
   -> (RC.KeyValueSet f c -> RC.KeyValueSet f b -> RC.Diff f c) -- all updates to the output collection
-  -> R.Dynamic t (Key f)
-  -> (RC.Key f -> a -> R.Event t a -> m (R.Event t b))
+  -> (forall x. R.Dynamic t Bool -> m x -> m x) -- make the widget "m x" visible only when the dynamic is "True"
+  -> R.Dynamic t (RC.Key f)
+  -> (RC.Key f -> R.Dynamic t a -> m (R.Event t b))
   -> f a
   -> R.Event t (RC.Diff f a)
   -> m (R.Dynamic t (RC.KeyValueSet f c), R.Event t (RC.Diff f c)) -- KeyValueSet is current value; event only fires on internal changes
-selectSelfEditingCollectionWithChanges dfaTodfc updateStructure updateAll keyDyn itemWidget fa dfaEv = mdo
-  inputFaDyn <- R.foldDyn (flip RC.applyDiff) fa dfaEv
-  let selectWidget k aDyn visDyn = RD.elDynAttr "div" () $ itemWidget  
-  kvbEv <- RC.selectViewListWithKeyGeneral fa keyDyn faDyn itemWidget
-  let dfaFromWidgetsEv = R.attachWith updateStructure (R.current curFcKVDyn) dfbEv
-      dfcFromWidgetsEv = R.attachWith updateAll (R.current curFcKVDyn) dfbEv
+selectSelfEditingCollectionWithChanges dfaTodfc updateStructure updateAll dynamicallyVisible keyDyn itemWidget fa dfaEv = mdo
+  let selectWidget k aDyn visDyn = dynamicallyVisible visDyn $ itemWidget k aDyn
+  faDyn <- R.foldDyn RC.applyDiff fa $ R.leftmost [dfaEv, dfaFromWidgetsEv]
+  kvbEv <- RC.selectViewListWithKeyGeneral fa keyDyn faDyn selectWidget
+  let dfaFromWidgetsEv = R.attachWith updateStructure (R.current curFcKVDyn) kvbEv
+      dfcFromWidgetsEv = R.attachWith updateAll (R.current curFcKVDyn) kvbEv
       curFcKVEv = R.attachWith (RC.slDifferenceWith (const id)) (R.current curFcKVDyn) dfcFromWidgetsEv
       newInputFcKV = R.attachWith (RC.updateKeyValueSet (Proxy :: Proxy f)) (R.current curFcKVDyn) (dfaTodfc <$> dfaEv)      
   curFcKVDyn <- R.holdDyn (diffMapToKVMap (Proxy :: Proxy f) dfaTodfc . RC.toKeyValueSet $ fa) $ R.leftmost [newInputFcKV, curFcKVEv]
   return (curFcKVDyn, dfcFromWidgetsEv)  
--}
+
 
 selfEditingCollection :: forall t m f a b c. ( R.Reflex t
                                              , R.MonadHold t m
