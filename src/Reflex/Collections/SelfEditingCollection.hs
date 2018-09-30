@@ -13,6 +13,7 @@ module Reflex.Collections.SelfEditingCollection
   , selfEditingCollectionMaybe
   , selfEditingCollectionGeneral
   , selfEditingCollectionWithChanges
+  , selectSelfEditingCollectionWithChanges
   , simpleSelfEditingCollection
   ) where
 
