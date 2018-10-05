@@ -95,8 +95,7 @@ selectSelfEditingCollectionWithChanges :: forall t m f a b c. ( R.Reflex t
   -> m (R.Dynamic t (RC.KeyValueSet f c), R.Event t (RC.Diff f c)) -- KeyValueSet is current value; event only fires on internal changes
 selectSelfEditingCollectionWithChanges dfaTodfc updateStructure updateAll dynamicallyVisible keyDyn itemWidget fa dfaEv = mdo
   let selectWidget k aDyn visDyn = dynamicallyVisible visDyn $ itemWidget k aDyn
-  faDyn <- R.foldDyn RC.applyDiff fa $ R.leftmost [dfaEv, dfaFromWidgetsEv]
-  kvbEv <- RC.selectViewListWithKeyGeneral fa keyDyn faDyn selectWidget
+  kvbEv <- RC.selectViewListWithKeyShallowDiff keyDyn fa (R.leftmost [dfaEv, dfaFromWidgetsEv]) selectWidget
   let dfaFromWidgetsEv = R.attachWith updateStructure (R.current curFcKVDyn) kvbEv
       dfcFromWidgetsEv = R.attachWith updateAll (R.current curFcKVDyn) kvbEv
       curFcKVEv = R.attachWith (RC.slDifferenceWith (const id)) (R.current curFcKVDyn) dfcFromWidgetsEv
