@@ -63,6 +63,7 @@ module Reflex.Collections.Collections
   , selectViewListWithKey
   , selectViewListWithKeyMaybe
   , selectViewListWithKeyGeneral
+  , selectViewListWithKeyShallowDiff
   , simplifyDynMaybe
   , maybeHelper
   , SequenceableC
@@ -379,6 +380,32 @@ selectViewListWithKeyGeneral emptyFV selection vals mkChild = do
     return selectSelf
   return $ R.switchPromptlyDyn (mergeOver <$> selectChild)
 {-# INLINABLE selectViewListWithKey #-}
+
+
+selectViewListWithKeyShallowDiff :: ( R.Adjustable t m
+                                    , MonadFix m
+                                    , R.MonadHold t m
+                                    , R.PostBuild t m
+                                    , Foldable f
+                                    , Mergeable f
+                                    , FannableC f v
+                                    , SequenceableWithEventC t f a
+                                    , Ord (Key f))
+  => R.Dynamic t (Key f)          -- ^ Current selection key
+  -> f v
+  -> R.Event t (Diff f v)
+  -> (Key f -> R.Dynamic t v -> R.Dynamic t Bool -> m (R.Event t a)) -- ^ Function to create a widget for a given key from Dynamic value and Dynamic Bool indicating if this widget is currently selected
+  -> m (R.Event t (KeyValueSet f a))        -- ^ Event that fires when any child's return Event fires.
+selectViewListWithKeyShallowDiff selection fv dfvEv mkChild = do
+  let selectionDemux = R.demux selection -- For good performance, this value must be shared across all children
+  listViewWithKeyShallowDiffGeneral fv dfvEv $ \k v0 vEv -> do
+    let selected = R.demuxed selectionDemux k
+    vDyn <- R.holdDyn v0 vEv
+    selectSelf <- mkChild k vDyn selected
+    return selectSelf
+--  return $ R.switchPromptlyDyn (mergeOver <$> selectChild)
+{-# INLINABLE selectViewListWithKeyShallowDiff #-}
+
 
 -- for the case when the widget function produces a (Dynamic t (g a)) and we are using the Maybe variant of these functions
 -- I would like to include the widget here so that the types show that the widget must return m (Dynamic t (g a)) but I can't get that to
